@@ -67,7 +67,7 @@ the queries of `foo/`.
 The concrete SQL file and/or set of SQL files and directories can be specified as the arguments of the `exec`
 command, for example:
 
-  $ pgspa exec foo bar.sql baz
+    $ pgspa exec foo bar.sql baz
 
 All queries of the specified set will be run in the same transaction. Since Pgspa is using GNU style for
 reporting error messages, [Emacs] users can run Pgspa in the [Compilation Mode][emacs-compilation-mode]
@@ -81,27 +81,27 @@ Shortcuts - are regular files without extension that contains the names of SQL f
 sequence of references to be executed without the need to specify this sequence in the command line. For
 example, consider the following simple case:
 
-  schemas/create.sql
-          drop.sql
+    schemas/create.sql
+            drop.sql
 
 Here obviously, that `create.sql` contains the DDL queries to create the objects of the schemas, and `drop.sql`
 contains the DDL queries to drop the objects of the schemas. To *recreate* the objects, the following command
 can be used:
 
-  $ pgspa exec schemas/drop schemas/create
+    $ pgspa exec schemas/drop schemas/create
 
 The same effect can be achieved by creating the shortcut `recreate` with the following lines:
 
-  drop
-  create
+    drop
+    create
 
 Then the shortcut can be used line that:
 
-  $ pgspa exec schemas/recreate
+    $ pgspa exec schemas/recreate
 
 But there are still some gotcha. The queries of the whole "schema" directory can be accidentally executed as simple as:
 
-  $ pgspa exec schemas
+    $ pgspa exec schemas
 
 It will lead to executing `schema/create.sql` and then `schema/drop.sql`. It is absolutely senselessly and may be even
 dangerous, since all of the objects will be eventually dropped. Such incidents can be prevented by using the `explicit`
