@@ -115,9 +115,9 @@ Per-directory configuration
 Each subdirectory of the database project directory can contain the configuration file. The format of this file
 is very simple:
 
-  parameter1 = value_without_spaces
-  parameter2 = 'value with spaces'
-  # commented_out_parameter_with_empty_value =
+    parameter1 = value_without_spaces
+    parameter2 = 'value with spaces'
+    # commented_out_parameter_with_empty_value =
 
 The currently supported parameters are:
 
