@@ -1,4 +1,4 @@
-Introduction to the SQL Programming Assistant for PostgreSQL
+Introduction to The SQL Programming Assistant for PostgreSQL
 ============================================================
 
 The SQL Programming Assistant for [PostgreSQL] (*Pgspa*) is a simple client program and (optionally)

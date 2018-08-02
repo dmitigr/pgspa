@@ -39,7 +39,7 @@ namespace fs = std::filesystem;
  */
 std::string usage()
 {
-  return std::string("pgspa - The PostgreSQL SQL Programming Assistant\n\n")
+  return std::string("pgspa - The SQL Programming Assistant for PostgreSQL\n\n")
     .append("Usage: pgspa <command>\n\n")
     .append("Commands:\n")
     .append("  help\n")
@@ -129,7 +129,7 @@ protected:
   /**
    * @returns `true` if the invariant is okay, or `false` otherwise.
    */
-  virtual bool is_invariant_ok() const
+  bool is_invariant_ok() const
   {
     return true;
   }
@@ -726,7 +726,7 @@ protected:
 
   // ---------------------------------------------------------------------------
 
-  virtual bool is_invariant_ok() const
+  bool is_invariant_ok() const
   {
     return (data_ && !delegate() && Command::is_invariant_ok()) ||
       (!data_ && delegate() && delegate()->is_invariant_ok());
@@ -953,6 +953,24 @@ private:
  */
 class Exec final : public detail::Online {
 public:
+  /**
+   * @returns The string with the options specific to this command.
+   */
+  static std::string options()
+  {
+    static std::string result{""};
+    return result;
+  }
+
+  /**
+   * @returns The string with the all options of this command.
+   */
+  static std::string all_options()
+  {
+    static std::string result{Online::all_options().append("\n").append(options())};
+    return result;
+  }
+
   explicit Exec(Online* const delegate)
     : Online{delegate}
   {
@@ -969,6 +987,8 @@ public:
     const auto b = cbegin(opts), e = cend(opts);
     for (auto i = parse_options(b, e, set_option); i != e; ++i)
       args_.push_back(*i);
+    if (args_.empty())
+      throw_invalid_usage("no references specified");
     ASSERT(is_invariant_ok());
   }
 
@@ -977,21 +997,31 @@ public:
     return std::string()
       .append("Usage: pgspa " + name() + " [<options>] reference ...\n\n")
       .append("Options:\n")
-      .append(Online::all_options());
+      .append(all_options());
   }
 
   void run() override
   {
     auto* const cn = conn();
     Tx_guard t{cn};
-    for (const auto& arg : args_) {
-      const auto count = execute(cn, sql_paths(arg));
-      std::cout << "The reference \"" << arg << "\". Executed queries count = " << count << ".\n";
-    }
+    run__(cn);
     t.commit();
   }
 
 private:
+  bool is_invariant_ok() const
+  {
+    return !args_.empty();
+  }
+
+  void run__(pgfe::Connection* const cn)
+  {
+    for (const auto& arg : args_) {
+      const auto count = execute(cn, sql_paths(arg));
+      std::cout << "The reference \"" << arg << "\". Executed queries count = " << count << ".\n";
+    }
+  }
+
   std::vector<std::string> args_;
 };
 
