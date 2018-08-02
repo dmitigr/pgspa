@@ -1,0 +1,6 @@
+.private
+.vs
+bin
+build
+*.idb
+*.pdb

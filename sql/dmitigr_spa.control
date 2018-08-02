@@ -1,0 +1,8 @@
+# (C) Dmitry Igrishin
+# For conditions of distribution and use, see files LICENSE.txt
+
+comment = 'PostgreSQL Server Programming Assistance'
+default_version = '0.1'
+relocatable = false
+superuser = false
+schema = dmitigr
