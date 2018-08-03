@@ -26,12 +26,15 @@ of these operations can be performed in the *same* transaction!
 Tutorial
 ========
 
-Pgspa ships with the extension for PostgreSQL that can safely *drop* the following types of database objects:
+Pgspa ships with the extension for PostgreSQL that can *drop* any combination of the following types of database objects
+in non-cascade mode:
 
   - rules;
   - triggers;
   - functions;
   - views;
+  - tables;
+  - indexes;
   - domain constraints;
   - domains;
   - types.

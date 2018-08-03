@@ -38,6 +38,28 @@ comment on view spa_table is 'The table';
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
+create or replace view spa_sequence as
+  select relnamespace::regnamespace::name as schemaname, cl.*
+    from pg_catalog.pg_class cl
+    join pg_catalog.pg_namespace nsp on (cl.relnamespace = nsp.oid)
+    where nsp.nspname not like E'pg\\_%' and
+          nsp.nspname <> 'information_schema' and
+          cl.relkind = 'S';
+comment on view spa_sequence is 'The sequence';
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+create or replace view spa_index as
+  select relnamespace::regnamespace::name as schemaname, cl.*
+    from pg_catalog.pg_class cl
+    join pg_catalog.pg_namespace nsp on (cl.relnamespace = nsp.oid)
+    where nsp.nspname not like E'pg\\_%' and
+          nsp.nspname <> 'information_schema' and
+          cl.relkind = 'i';
+comment on view spa_sequence is 'The index';
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 create or replace view spa_rule as
   select * from pg_catalog.pg_rules
     where schemaname not like E'pg\\_%' and
@@ -141,6 +163,8 @@ as $function$
     join pg_catalog.pg_roles r on r.oid = m.roleid
     where m.member = role_::regrole::oid;
 $function$;
+comment on function spa_groups(name, out name) is
+  'Set of groups in which the role has membership';
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -231,7 +255,7 @@ comment on function spa_revoke_all_privileges_if_exists(name, name) is
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
-create or replace function spa_revoke_all_memberships_if_exists(role_ name)
+create or replace function spa_revoke_from_groups_if_exists(role_ name)
   returns void
   returns null on null input
   language plpgsql
@@ -244,7 +268,7 @@ begin
   end loop;
 end;
 $function$;
-comment on function spa_revoke_all_memberships_if_exists(name) is 'Revoke all memberships of the given role';
+comment on function spa_revoke_from_groups_if_exists(name) is 'Revoke the given role from all the groups';
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -261,7 +285,7 @@ begin
     for schema_ in select spa_existing_schemas(schemas_) loop
       perform spa_revoke_if_exists(role_, schema_);
     end loop;
-    perform spa_revoke_all_memberships_if_exists(role_);
+    perform spa_revoke_from_groups_if_exists(role_);
   end loop;
 end;
 $function$;
@@ -287,17 +311,20 @@ comment on function spa_existing_schemas(name[], out name) is
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
-create or replace function spa_clear_schema(schema_ text,
-                                            with_tables_ boolean default false,
-                                            verbose_ boolean default true,
-                                            out deleted_count integer,
-                                            out remains_count integer)
+create or replace function spa_clear_schema(schema_ name,
+    object_types_ text[] default array['rules', 'triggers', 'functions',
+      'sequences', 'views', 'domains', 'domain_constraints', 'types'],
+    verbose_ boolean default true,
+    out deleted_count integer,
+    out remains_count integer)
   returns null on null input
   language plpgsql
 as $function$
 /*
- * Removes the following database objects: rules, triggers, functions, views,
- * domains and their constraints, composite types and enums iterational (non-cascading).
+ * Removes the following database objects: rules, triggers, functions, sequences,
+ * views, domains and their constraints, composite types and enums iterational
+ * (non-cascading).
+ * If (with_tables_ = true) the function also removes tables and indexes.
  *
  * Remarks: The triggers of the tables of extension are not affected. Also, the
  * domain constraints are not affected.
@@ -309,73 +336,122 @@ declare
   object_count_before_drops_ integer;
   object_ record;
 
-  count_query_ CONSTANT text :=
+  with_rules_ constant boolean := array_position(object_types_, 'rules') is not null;
+  with_triggers_ constant boolean := array_position(object_types_, 'triggers') is not null;
+  with_functions_ constant boolean := array_position(object_types_, 'functions') is not null;
+  with_sequences_ constant boolean := array_position(object_types_, 'sequences') is not null;
+  with_views_ constant boolean := array_position(object_types_, 'views') is not null;
+  with_domains_ constant boolean := array_position(object_types_, 'domains') is not null;
+  with_domain_constraints_ constant boolean := array_position(object_types_, 'domain_constraints') is not null;
+  with_types_ constant boolean := array_position(object_types_, 'types') is not null;
+  with_tables_ constant boolean := array_position(object_types_, 'tables') is not null;
+  with_indexes_ constant boolean := array_position(object_types_, 'indexes') is not null;
+
+  /*
+   * @param $1 - the schema name
+   * @param $2 - the object types
+   */
+  count_query_ constant text :=
   $$
   select
-    (select count(*) from @extschema@.spa_rule where schemaname = $1) +
-    (select count(*) from @extschema@.spa_trigger where schemaname = $1) +
-    (select count(*) from @extschema@.spa_function where schemaname = $1) +
-    (select count(*) from @extschema@.spa_view where schemaname = $1) +
-    (select count(*) from @extschema@.spa_table where schemaname = $1 and $2) +
-    (select count(*) from @extschema@.spa_domain_constraint where domain_schemaname = $1) +
-    (select count(*) from @extschema@.spa_type where typtype = 'd' and schemaname = $1) +
+    (select count(*) from @extschema@.spa_rule where schemaname = $1 and
+      array_position($2, 'rules') is not null) +
+    (select count(*) from @extschema@.spa_trigger where schemaname = $1 and
+      array_position($2, 'triggers') is not null) +
+    (select count(*) from @extschema@.spa_function where schemaname = $1 and
+      array_position($2, 'functions') is not null) +
+    (select count(*) from @extschema@.spa_sequence where schemaname = $1 and
+      array_position($2, 'sequences') is not null) +
+    (select count(*) from @extschema@.spa_view where schemaname = $1 and
+      array_position($2, 'views') is not null) +
+    (select count(*) from @extschema@.spa_table where schemaname = $1 and
+      array_position($2, 'tables') is not null) +
+    (select count(*) from @extschema@.spa_index where schemaname = $1 and
+      array_position($2, 'indexes') is not null) +
+    (select count(*) from @extschema@.spa_domain_constraint where domain_schemaname = $1 and
+      array_position($2, 'domain_constraints') is not null) +
+    (select count(*) from @extschema@.spa_type where typtype = 'd' and schemaname = $1 and
+      array_position($2, 'domains') is not null) +
     (select count(*) from @extschema@.spa_type t left join pg_catalog.pg_class c on (t.typrelid = c.oid)
-       where typtype in ('b', 'c', 'e', 'r') and
-       typcategory <> 'A' and (relkind = 'c' or relkind is null) and schemaname = $1)
+      where typtype in ('b', 'c', 'e', 'r') and
+      typcategory <> 'A' and (relkind = 'c' or relkind is null) and schemaname = $1 and
+      array_position($2, 'types') is not null)
   $$;
 
-  rules_query_ CONSTANT text :=
+  rules_query_ constant text :=
   $$
   select quote_ident(rulename) nm,
          quote_ident(schemaname)||'.'||quote_ident(tablename) tab
-    from @extschema@.spa_rule where schemaname = $1
+    from @extschema@.spa_rule where schemaname = $1 and
+    array_position($2, 'rules') is not null
   $$;
 
-  triggers_query_ CONSTANT text :=
+  triggers_query_ constant text :=
   $$
   select quote_ident(tgname) nm, tgrelid::regclass::text tab
-    from @extschema@.spa_trigger where schemaname = $1
+    from @extschema@.spa_trigger where schemaname = $1 and
+    array_position($2, 'triggers') is not null
   $$;
 
-  functions_query_ CONSTANT text :=
+  functions_query_ constant text :=
   $$
   select quote_ident(schemaname)||'.'||quote_ident(proname) nm,
          pg_get_function_identity_arguments(oid) args
-    from @extschema@.spa_function where schemaname = $1
+    from @extschema@.spa_function where schemaname = $1 and
+    array_position($2, 'functions') is not null
   $$;
 
-  views_query_ CONSTANT text :=
+  views_query_ constant text :=
   $$
   select quote_ident(schemaname)||'.'||quote_ident(viewname) nm
-    from @extschema@.spa_view where schemaname = $1
+    from @extschema@.spa_view where schemaname = $1 and
+    array_position($2, 'views') is not null
   $$;
 
-  tables_query_ CONSTANT text :=
+  sequences_query_ constant text :=
   $$
   select quote_ident(schemaname)||'.'||quote_ident(relname) nm
-    from @extschema@.spa_table where schemaname = $1
+    from @extschema@.spa_sequence where schemaname = $1 and
+    array_position($2, 'sequences') is not null
   $$;
 
-  domain_constraints_query_ CONSTANT text :=
+  tables_query_ constant text :=
+  $$
+  select quote_ident(schemaname)||'.'||quote_ident(relname) nm
+    from @extschema@.spa_table where schemaname = $1 and
+    array_position($2, 'tables') is not null
+  $$;
+
+  indexes_query_ constant text :=
+  $$
+  select quote_ident(schemaname)||'.'||quote_ident(relname) nm
+    from @extschema@.spa_index where schemaname = $1 and
+    array_position($2, 'indexes') is not null
+  $$;
+
+  domain_constraints_query_ constant text :=
   $$
   select quote_ident(conname) nm,
          quote_ident(domain_schemaname)||'.'||quote_ident(domain_name) dom
-    from @extschema@.spa_domain_constraint where domain_schemaname = $1
+    from @extschema@.spa_domain_constraint where domain_schemaname = $1 and
+    array_position($2, 'domain_constraints') is not null
   $$;
 
-  domains_query_ CONSTANT text :=
+  domains_query_ constant text :=
   $$
   select quote_ident(schemaname)||'.'||quote_ident(typname) nm
-    from @extschema@.spa_type where typtype = 'd' and schemaname = $1
+    from @extschema@.spa_type where typtype = 'd' and schemaname = $1 and
+    array_position($2, 'domains') is not null
   $$;
 
   -- Selects only: the base types, composite types, enums and range types.
-  types_query_ CONSTANT text :=
+  types_query_ constant text :=
   $$
   select quote_ident(schemaname)||'.'||quote_ident(typname) nm
     from @extschema@.spa_type t left join pg_catalog.pg_class c on (t.typrelid = c.oid)
     where typtype in ('b', 'c', 'e', 'r') and
-      typcategory <> 'A' and (relkind = 'c' or relkind is null) and schemaname = $1
+      typcategory <> 'A' and (relkind = 'c' or relkind is null) and schemaname = $1 and
+      array_position($2, 'types') is not null
   $$;
 begin
   perform 1 from @extschema@.spa_schema where nspname = schema_;
@@ -388,13 +464,13 @@ begin
    * dependence of other objects on them is unlikely (if ever possible).
    * On the other hand such objects are always depends on tables, functions etc.
    */
-  execute count_query_ into strict object_count_ using schema_, with_tables_;
+  execute count_query_ into strict object_count_ using schema_, object_types_;
   remains_count := object_count_;
   while (object_count_ > 0) loop
     object_count_before_drops_ := object_count_;
 
     -- The rules removal
-    for object_ in execute rules_query_ using schema_ loop
+    for object_ in execute rules_query_ using schema_, object_types_ loop
       begin
         execute 'drop rule if exists '||object_.nm||' on '||object_.tab;
         if (verbose_) then
@@ -408,7 +484,7 @@ begin
     end loop;
 
     -- The triggers removal
-    for object_ in execute triggers_query_ using schema_ loop
+    for object_ in execute triggers_query_ using schema_, object_types_ loop
       begin
         execute 'drop trigger if exists '||object_.nm||' on '||object_.tab;
         if (verbose_) then
@@ -422,7 +498,7 @@ begin
     end loop;
 
     -- The functions removal
-    for object_ in execute functions_query_ using schema_ loop
+    for object_ in execute functions_query_ using schema_, object_types_ loop
       begin
         execute 'drop function if exists '||object_.nm||'('||object_.args||')';
         if (verbose_) then
@@ -435,7 +511,7 @@ begin
     end loop;
 
     -- The views removal
-    for object_ in execute views_query_ using schema_ loop
+    for object_ in execute views_query_ using schema_, object_types_ loop
       begin
         execute 'drop view if exists '||object_.nm;
         if (verbose_) then
@@ -447,23 +523,47 @@ begin
       end;
     end loop;
 
-    if (with_tables_) then
-      -- The tables removal
-      for object_ in execute tables_query_ using schema_ loop
-        begin
-          execute 'drop table if exists '||object_.nm;
-          if (verbose_) then
-            raise notice 'The table % has been removed', object_.nm;
-          end if;
-        exception
-          when invalid_schema_name then null;
-          when dependent_objects_still_exist then null;
-        end;
-      end loop;
-    end if;
+    -- The sequences removal
+    for object_ in execute sequences_query_ using schema_, object_types_ loop
+      begin
+        execute 'drop sequence if exists '||object_.nm;
+        if (verbose_) then
+          raise notice 'The sequence % has been removed', object_.nm;
+        end if;
+      exception
+        when invalid_schema_name then null;
+        when dependent_objects_still_exist then null;
+      end;
+    end loop;
+
+    -- The tables removal
+    for object_ in execute tables_query_ using schema_, object_types_ loop
+      begin
+        execute 'drop table if exists '||object_.nm;
+        if (verbose_) then
+          raise notice 'The table % has been removed', object_.nm;
+        end if;
+      exception
+        when invalid_schema_name then null;
+        when dependent_objects_still_exist then null;
+      end;
+    end loop;
+
+    -- The indexes removal
+    for object_ in execute indexes_query_ using schema_, object_types_ loop
+      begin
+        execute 'drop index if exists '||object_.nm;
+        if (verbose_) then
+          raise notice 'The index % has been removed', object_.nm;
+        end if;
+      exception
+        when invalid_schema_name then null;
+        when dependent_objects_still_exist then null;
+      end;
+    end loop;
 
     -- The domain constraints removal
-    for object_ in execute domain_constraints_query_ using schema_ loop
+    for object_ in execute domain_constraints_query_ using schema_, object_types_ loop
       begin
         execute 'alter domain '||object_.dom||' drop constraint if exists '||object_.nm;
         if (verbose_) then
@@ -477,7 +577,7 @@ begin
     end loop;
 
     -- The domains removal
-    for object_ in execute domains_query_ using schema_ loop
+    for object_ in execute domains_query_ using schema_, object_types_ loop
       begin
         execute 'drop domain if exists '||object_.nm;
         if (verbose_) then
@@ -490,7 +590,7 @@ begin
     end loop;
 
     -- The types removal
-    for object_ in execute types_query_ using schema_ loop
+    for object_ in execute types_query_ using schema_, object_types_ loop
       begin
         execute 'drop type if exists '||object_.nm;
         if (verbose_) then
@@ -507,40 +607,46 @@ begin
      * database still have the objects that should have been removed,
      * then it is necessary to display information about such objects.
      */
-    execute count_query_ into strict object_count_ using schema_, with_tables_;
+    execute count_query_ into strict object_count_ using schema_, object_types_;
     if (object_count_ > 0 and object_count_before_drops_ = object_count_) then
       if (verbose_) then
-        if (with_tables_) then
-          for object_ in execute tables_query_ using schema_ loop
-            raise notice 'The table % was not removed', object_.nm;
-          end loop;
-        end if;
-
-        for object_ in execute rules_query_ using schema_ loop
+        for object_ in execute rules_query_ using schema_, object_types_ loop
           raise notice 'The rule % of the table % was not removed', object_.nm, object_.tab;
         end loop;
 
-        for object_ in execute triggers_query_ using schema_ loop
+        for object_ in execute triggers_query_ using schema_, object_types_ loop
           raise notice 'The trigger % of the table % was not removed', object_.nm, object_.tab;
         end loop;
 
-        for object_ in execute functions_query_ using schema_ loop
+        for object_ in execute functions_query_ using schema_, object_types_ loop
           raise notice 'The function %(%) was not removed', object_.nm, object_.args;
         end loop;
 
-        for object_ in execute views_query_ using schema_ loop
+        for object_ in execute views_query_ using schema_, object_types_ loop
           raise notice 'The view % was not removed', object_.nm;
         end loop;
 
-        for object_ in execute domain_constraints_query_ using schema_ loop
+        for object_ in execute sequences_query_ using schema_, object_types_ loop
+          raise notice 'The sequence % was not removed', object_.nm;
+        end loop;
+
+        for object_ in execute tables_query_ using schema_, object_types_ loop
+          raise notice 'The table % was not removed', object_.nm;
+        end loop;
+
+        for object_ in execute indexes_query_ using schema_, object_types_ loop
+          raise notice 'The index % was not removed', object_.nm;
+        end loop;
+
+        for object_ in execute domain_constraints_query_ using schema_, object_types_ loop
           raise notice 'The constraint % of the domain % was not removed', object_.nm, object_.dom;
         end loop;
 
-        for object_ in execute domains_query_ using schema_ loop
+        for object_ in execute domains_query_ using schema_, object_types_ loop
           raise notice 'The domain % was not removed', object_.nm;
         end loop;
 
-        for object_ in execute types_query_ using schema_ loop
+        for object_ in execute types_query_ using schema_, object_types_ loop
           raise notice 'The type % was not removed', object_.nm;
         end loop;
       end if;
@@ -553,24 +659,26 @@ begin
   remains_count := object_count_;
 end;
 $function$;
-comment on function spa_clear_schema(text, boolean, boolean) is 'Drops the objects of the given schema';
+comment on function spa_clear_schema(name, text[], boolean) is 'Drops the objects of the given schema';
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 create or replace function spa_clear_schemas_if_exists(schemas_ name[],
-                                                       verbose_ boolean default true,
-                                                       out deleted_count integer,
-                                                       out remains_count integer)
+    object_types_ text[] default array['rules', 'triggers', 'functions',
+      'sequences', 'views', 'domains', 'domain_constraints', 'types'],
+    verbose_ boolean default true,
+    out deleted_count integer,
+    out remains_count integer)
   returns setof record
   returns null on null input
   language sql
 as $function$
   select coalesce(dc, 0), coalesce(rc, 0) from
     (select sum(deleted_count)::integer as dc, sum(remains_count)::integer as rc from
-      (select (@extschema@.spa_clear_schema(nspname, verbose_)).* from
+      (select (@extschema@.spa_clear_schema(nspname, object_types_, verbose_ := verbose_)).* from
         @extschema@.spa_existing_schemas(schemas_)) as foo) as bar;
 $function$;
-comment on function spa_clear_schemas_if_exists(name[], boolean) is 'Removes the logic of the given schemas';
+comment on function spa_clear_schemas_if_exists(name[], text[], boolean) is 'Removes the given logic from the given schemas';
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -578,7 +686,7 @@ comment on function spa_clear_schemas_if_exists(name[], boolean) is 'Removes the
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
-create or replace function spa_terminate_backends(database_ text)
+create or replace function spa_terminate_backends(database_ text default current_database())
   returns integer
   returns null on null input
   language sql
