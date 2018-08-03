@@ -322,12 +322,8 @@ create or replace function spa_clear_schema(schema_ name,
 as $function$
 /*
  * Removes the following database objects: rules, triggers, functions, sequences,
- * views, domains and their constraints, composite types and enums iterational
+ * views, tables, indexes, domains and their constraints, composite types and enums iterational
  * (non-cascading).
- * If (with_tables_ = true) the function also removes tables and indexes.
- *
- * Remarks: The triggers of the tables of extension are not affected. Also, the
- * domain constraints are not affected.
  *
  * Returns: the count of removed and remaining objects.
  */
