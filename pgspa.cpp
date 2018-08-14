@@ -97,12 +97,13 @@ protected:
   /**
    * @brief Sets the values of the options specific to this command.
    */
-  void set_option(const Option_iterator& i, const Option_iterator& e)
+  void parse_option(const std::string& option)
   {
-    if (*i == "--help")
+    ASSERT(option.find("--") == 0);
+    if (option == "--help")
       help_ = true;
     else
-      throw_invalid_usage("invalid option \"" + *i + "\"");
+      throw_invalid_usage("invalid option \"" + option + "\"");
   };
 
   // ---------------------------------------------------------------------------
@@ -307,8 +308,8 @@ class Help final : public Command {
 public:
   explicit Help(const std::vector<std::string>& opts)
   {
-    const auto set_option = [this](const auto& i, const auto& e) { Command::set_option(i, e); };
-    auto i = parse_options(cbegin(opts), cend(opts), set_option);
+    const auto parse_option = [this](const std::string& o) { Command::parse_option(o); };
+    auto i = parse_options(cbegin(opts), cend(opts), parse_option);
     if (i != cend(opts)) {
       if (*i != "help")
         command_ = make(*i, std::vector<std::string>{"--help"});
@@ -352,8 +353,8 @@ class Version final : public Command {
 public:
   explicit Version(const std::vector<std::string>& opts)
   {
-    const auto set_option = [this](const auto& i, const auto& e) { Command::set_option(i, e); };
-    const auto i = parse_options(cbegin(opts), cend(opts), set_option);
+    const auto parse_option = [this](const std::string& o) { Command::parse_option(o); };
+    const auto i = parse_options(cbegin(opts), cend(opts), parse_option);
     if (i != cend(opts))
       throw_invalid_usage();
   }
@@ -380,8 +381,8 @@ class Init final : public Command {
 public:
   explicit Init(const std::vector<std::string>& opts)
   {
-    const auto set_option = [this](auto& i, const auto& e) { return Command::set_option(i, e); };
-    const auto i = parse_options(cbegin(opts), cend(opts), set_option);
+    const auto parse_option = [this](const std::string& o) { return Command::parse_option(o); };
+    const auto i = parse_options(cbegin(opts), cend(opts), parse_option);
     if (i != cend(opts))
       throw_invalid_usage();
   }
@@ -423,6 +424,7 @@ protected:
       "  --address=<IP address> - the IP address of the PostgreSQL server (unset by default).\n"
       "  --port=<number> - the port number of the PostgreSQL server to operate (\"5432\" by default).\n"
       "  --user=<name> - the name of the user to operate (current username by default).\n"
+      "  --password=<password> - the password (be aware, it may appear in the system logs!)\n"
       "  --database=<name> - the name of the database to operate (value of --user by default).\n"
       "  --client_encoding=<name> - the name of the client encoding to operate.\n"
       "  --connect_timeout=<seconds> - the connect timeout in seconds (\"8\" by default)."};
@@ -456,30 +458,32 @@ protected:
   }
 
   /**
-   * @brief Sets the values of the options specific to this command.
+   * @brief Parses the options specific to this command.
    */
-  void set_option(const Option_iterator& i, const Option_iterator& e)
+  void parse_option(const std::string& option)
   {
     ASSERT(delegate() || data_);
     if (auto* const d = delegate()) {
-      d->set_option(i, e);
+      d->parse_option(option);
     } else {
-      if (i->find("--host") == 0)
-        data_->host_ = read_option_argument(i, e).value();
-      else if (i->find("--address") == 0)
-        data_->address_ = read_option_argument(i, e).value();
-      else if (i->find("--port") == 0)
-        data_->port_ = read_option_argument(i, e).value();
-      else if (i->find("--database") == 0)
-        data_->database_ = read_option_argument(i, e).value();
-      else if (i->find("--user") == 0)
-        data_->username_ = read_option_argument(i, e).value();
-      else if (i->find("--client_encoding") == 0)
-        data_->encoding_ = read_option_argument(i, e).value();
-      else if (i->find("--connect_timeout") == 0)
-        data_->connect_timeout_ = std::chrono::seconds{std::stoul(read_option_argument(i, e).value())};
+      if (option.find("--host") == 0)
+        data_->host_ = option_argument(option).value();
+      else if (option.find("--address") == 0)
+        data_->address_ = option_argument(option).value();
+      else if (option.find("--port") == 0)
+        data_->port_ = option_argument(option).value();
+      else if (option.find("--database") == 0)
+        data_->database_ = option_argument(option).value();
+      else if (option.find("--user") == 0)
+        data_->username_ = option_argument(option).value();
+      else if (option.find("--password") == 0)
+        data_->password_ = option_argument(option).value();
+      else if (option.find("--client_encoding") == 0)
+        data_->encoding_ = option_argument(option).value();
+      else if (option.find("--connect_timeout") == 0)
+        data_->connect_timeout_ = std::chrono::seconds{std::stoul(option_argument(option).value())};
       else
-        Command::set_option(i, e);
+        Command::parse_option(option);
     }
     ASSERT(is_invariant_ok());
   };
@@ -570,6 +574,15 @@ protected:
       return d->username();
     else
       return data_->username_;
+  }
+
+  const std::optional<std::string>& password() const
+  {
+    ASSERT(delegate() || data_);
+    if (auto* const d = delegate())
+      return d->password();
+    else
+      return data_->password_;
   }
 
   std::chrono::seconds connect_timeout() const
@@ -703,6 +716,7 @@ protected:
           set_tcp_host_port(std::stoi(host_port()))->
           set_database(database())->
           set_username(username())->
+          set_password(password())->
           make_connection();
       }
 
@@ -932,6 +946,7 @@ private:
     std::string port_;
     std::string database_;
     std::string username_;
+    std::optional<std::string> password_;
     std::string encoding_;
 
     std::chrono::seconds connect_timeout_;
@@ -980,12 +995,9 @@ public:
   explicit Exec(const std::vector<std::string>& opts)
     : Online{"exec"}
   {
-    const auto set_option = [this](const auto& i, const auto& e)
-    {
-      return Online::set_option(i, e);
-    };
+    const auto parse_option = [this](const std::string& o) { return Online::parse_option(o); };
     const auto b = cbegin(opts), e = cend(opts);
-    for (auto i = parse_options(b, e, set_option); i != e; ++i)
+    for (auto i = parse_options(b, e, parse_option); i != e; ++i)
       args_.push_back(*i);
     if (args_.empty())
       throw_invalid_usage("no references specified");
@@ -1017,7 +1029,7 @@ private:
   void run__(pgfe::Connection* const cn)
   {
     for (const auto& arg : args_) {
-      const auto count = execute(cn, sql_paths(arg));
+      const auto count = execute(cn, sql_paths(root_path() / arg));
       std::cout << "The reference \"" << arg << "\". Executed queries count = " << count << ".\n";
     }
   }

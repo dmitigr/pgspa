@@ -44,7 +44,7 @@ protected:
   using Option_iterator = typename Option_vector::const_iterator;
 
   /** Represents a setter of command options. */
-  using Option_setter = std::function<void (const Option_iterator&, const Option_iterator&)>;
+  using Option_parser = std::function<void (const std::string&)>;
 
   /**
    * @throws An instance of std::logic_error.
@@ -62,36 +62,38 @@ protected:
   /**
    * @returns The argument that follows the option.
    *
-   * @param iterator - The iterator that denotes the option.
-   * @param end - The iterator that denotes the end of options.
+   * @param value - The value the option.
    * @param is_optional - The indicator of an optional option argument.
    */
-  std::optional<std::string> read_option_argument(const Option_iterator& iterator, const Option_iterator end,
-    const bool is_optional = false) const
+  std::optional<std::string> option_argument(const std::string& value, const bool is_optional = false) const
   {
-    DMITIGR_PGSPA_INTERNAL_ASSERT(iterator < end);
-    const auto& value = *iterator;
     if (const auto pos = value.find('='); pos != std::string::npos)
       return pos < value.size() ? value.substr(pos + 1) : std::string{};
     else if (is_optional)
       return std::nullopt;
     else
-      throw_invalid_usage("no argument for the \"" + value + "\" option specified");
+      throw_invalid_usage("no argument for the \"" + value.substr(0, pos) + "\" option specified");
+  }
+
+  void check_no_option_argument(const std::string& value) const
+  {
+    DMITIGR_PGSPA_INTERNAL_ASSERT(value.find("--") == 0);
+    if (const auto pos = value.find('='); pos != std::string::npos)
+      throw_invalid_usage("no argument for the option \"" + value.substr(0, pos) + "\" can be specified");
   }
 
   /**
    * @brief Parses the options.
    *
-   * @param opts - The options to parse.
-   * @param set_option - The callback setter that will be called for each option.
-   * The setter must accepts two arguments:
-   *   - the iterator of the first option to parse;
-   *   - the iterator of the after-last option to parse;
+   * @param i - The starting iterator of the options to parse.
+   * @param e - The ending iterator of the options to parse.
+   * @param parse_option - The callback that will be called for each option.
+   * The parser must accepts one argument: the string of the option to parse.
    */
-  Option_iterator parse_options(Option_iterator i, const Option_iterator e, Option_setter set_option)
+  Option_iterator parse_options(Option_iterator i, const Option_iterator e, Option_parser parse_option)
   {
     for (; i != e && *i != "--" && (i->find("--") == 0); ++i)
-      set_option(i, e);
+      parse_option(*i);
     return i;
   }
 };

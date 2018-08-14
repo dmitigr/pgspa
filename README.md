@@ -98,7 +98,7 @@ The same effect can be achieved by creating the shortcut `recreate` with the fol
     drop
     create
 
-Then the shortcut can be used line that:
+Then the shortcut can be used like that:
 
     $ pgspa exec schemas/recreate
 
