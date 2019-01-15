@@ -8,13 +8,10 @@
 
 #include "dmitigr/pgspa/internal/console.hxx"
 #include "dmitigr/pgspa/internal/debug.hxx"
-#include "dmitigr/pgspa/internal/simple_config.hxx"
-#include "dmitigr/pgspa/internal/os/user.hxx"
-#include "dmitigr/pgspa/internal/std/filesystem/read_to_string.hxx"
-#include "dmitigr/pgspa/internal/std/filesystem/read_lines_to_vector.hxx"
-#include "dmitigr/pgspa/internal/std/filesystem/relative_root_path.hxx"
-#include "dmitigr/pgspa/internal/std/string/line.hxx"
-#include "dmitigr/pgspa/internal/std/string/substring.hxx"
+#include "dmitigr/pgspa/internal/config.hxx"
+#include "dmitigr/pgspa/internal/os.hxx"
+#include "dmitigr/pgspa/internal/filesystem.hxx"
+#include "dmitigr/pgspa/internal/string.hxx"
 
 #include <dmitigr/pgfe.hpp>
 
@@ -59,7 +56,7 @@ class Handled_exception{};
 /**
  * @brief Represents the pgspa command.
  */
-class Command : public internal::Console_command {
+class Command : public internal::console::Command {
 public:
   /**
    * @brief This factory function makes the command object from the textual type identifier.
@@ -142,7 +139,7 @@ protected:
    */
   static fs::path root_path()
   {
-    return internal::relative_root_path(".pgspa");
+    return internal::filesystem::relative_root_path(".pgspa");
   }
 
   /**
@@ -184,7 +181,7 @@ private:
     } else if (is_regular_file(reference) && reference.extension().empty()) {
       static const auto is_nor_empty_nor_commented = [](const std::string& line) { return (!line.empty() && line.front() != '#'); };
       const auto parent = reference.parent_path();
-      const auto paths = internal::read_lines_to_vector_if(reference, is_nor_empty_nor_commented);
+      const auto paths = internal::filesystem::read_lines_to_vector_if(reference, is_nor_empty_nor_commented);
 
       const auto is_in_trace = [&](const fs::path& p)
       {
@@ -286,10 +283,10 @@ private:
   /**
    * @returns The map of per-directory configuration parameters.
    */
-  static internal::Simple_config parsed_config(const fs::path& path)
+  static internal::config::Flat parsed_config(const fs::path& path)
   {
-    internal::Simple_config result{path};
-    for (const auto& pair : result.data()) {
+    internal::config::Flat result{path};
+    for (const auto& pair : result.parameters()) {
       if (pair.first != "explicit")
         throw std::logic_error{"unknown parameter \"" + pair.first + "\" specified in \"" + path.string() + "\""};
     }
@@ -604,7 +601,7 @@ protected:
     explicit Sql_batch(const fs::path& path)
       : path_{path}
     {
-      vec_ = pgfe::Sql_vector::make(internal::read_to_string(*path_));
+      vec_ = pgfe::Sql_vector::make(internal::filesystem::read_to_string(*path_));
       ASSERT(is_invariant_ok());
     }
 
@@ -831,13 +828,15 @@ private:
       if (const auto& path = batches[i].path()) {
         const auto content = sv->to_string();
         const auto sso = sql_string_position(batches[i].sql_vector(), j);
-        const auto qpos = query_offset ? sso + *query_offset : sso + internal::position_of_non_space(sv->sql_string(j)->to_string(), 0);
-        const auto[lnum, cnum] = internal::line_column_numbers_by_position(content, qpos);
+        const auto qpos = query_offset ?
+          sso + *query_offset :
+          sso + internal::string::position_of_non_space(sv->sql_string(j)->to_string(), 0);
+        const auto[lnum, cnum] = internal::string::line_column_numbers_by_position(content, qpos);
         report_file_error(*path, lnum, cnum, msg);
       } else {
         const auto content = sv->sql_string(j)->to_string();
         const auto qpos = query_offset.value_or(0);
-        const auto[lnum, cnum] = internal::line_column_numbers_by_position(content, qpos);
+        const auto[lnum, cnum] = internal::string::line_column_numbers_by_position(content, qpos);
         std::cerr << "pgspa internal query (see below):" << lnum << ":" << cnum << ":Error: " << msg << ":\n"
           << content << "\n";
       }
@@ -1064,7 +1063,7 @@ int main(const int argc, const char* const argv[])
   const auto executable_name = argv[0];
   try {
     if (argc > 1) {
-      const auto [cmd, opts] = spa::internal::command_and_options(argc, argv);
+      const auto [cmd, opts] = spa::internal::console::command_and_options(argc, argv);
       const auto command = spa::Command::make(cmd, opts);
       command->go();
     } else {

@@ -38,7 +38,7 @@ find_package(dmitigr_pgfe REQUIRED)
 set(CMAKE_CXX_STANDARD 17)
 set(CXX_STANDARD_REQUIRED ON)
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
-add_executable(pgspa pgspa.cpp)
+add_executable(pgspa $<TARGET_OBJECTS:dmitigr_pgspa_internal> pgspa.cpp)
 set(libraries_to_link dmitigr_pgfe)
 if (WIN32)
   list(APPEND libraries_to_link Advapi32.lib)
@@ -53,3 +53,4 @@ install(TARGETS pgspa
 # ------------------------------------------------------------------------------
 
 add_subdirectory(sql)
+add_subdirectory(dmitigr/pgspa/internal)
