@@ -16,7 +16,6 @@
 #include <dmitigr/pgfe.hpp>
 
 #include <algorithm>
-#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -261,10 +260,11 @@ private:
    */
   static void push_back_if_sql_file_or_directory(std::vector<fs::path>& result, const fs::directory_entry& e)
   {
-    if (e.is_regular_file() && e.path().extension() == ".sql")
-      push_back_if_not_exists(result, e.path().stem());
-    else if (e.is_directory())
-      push_back_if_not_exists(result, e.path().filename());
+    const auto& path = e.path();
+    if (is_regular_file(path) && path.extension() == ".sql")
+      push_back_if_not_exists(result, path.stem());
+    else if (is_directory(path))
+      push_back_if_not_exists(result, path.filename());
   }
 
   /**

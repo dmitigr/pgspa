@@ -28,9 +28,10 @@ std::vector<std::filesystem::path> fs::files_by_extension(const std::filesystem:
   if (is_directory(root)) {
     const auto traverse = [&](auto iterator)
     {
-      for (const auto& p : iterator) {
-        if (p.is_regular_file() && p.path().extension() == extension)
-          result.push_back(p);
+      for (const auto& dirent : iterator) {
+        const auto& path = dirent.path();
+        if (is_regular_file(path) && path.extension() == extension)
+          result.push_back(dirent);
       }
     };
 
