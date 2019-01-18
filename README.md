@@ -137,6 +137,7 @@ Dependencies
 
 - [CMake] build system version 3.10+;
 - [Pgfe] library;
+- [dmitigr_internal] library;
 - C++17 compiler ([GCC] 8+ or [Microsoft Visual C++][Visual_Studio] 15.7+).
 
 Build time settings
@@ -243,6 +244,7 @@ Copyright
 
 Copyright (C) Dmitry Igrishin
 
+[dmitigr_internal]: https://github.com/dmitigr/internal.git
 [Pgfe]: https://github.com/dmitigr/pgfe.git
 [mailbox]: mailto:dmitigr@gmail.com
 

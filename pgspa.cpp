@@ -6,12 +6,12 @@
 #define NOMINMAX
 #endif
 
-#include "dmitigr/pgspa/internal/console.hxx"
-#include "dmitigr/pgspa/internal/debug.hxx"
-#include "dmitigr/pgspa/internal/config.hxx"
-#include "dmitigr/pgspa/internal/os.hxx"
-#include "dmitigr/pgspa/internal/filesystem.hxx"
-#include "dmitigr/pgspa/internal/string.hxx"
+#include "dmitigr/internal/console.hpp"
+#include "dmitigr/internal/debug.hpp"
+#include "dmitigr/internal/config.hpp"
+#include "dmitigr/internal/os.hpp"
+#include "dmitigr/internal/filesystem.hpp"
+#include "dmitigr/internal/string.hpp"
 
 #include <dmitigr/pgfe.hpp>
 
@@ -23,8 +23,8 @@
 #include <string>
 #include <vector>
 
-#define ASSERT(a) DMITIGR_PGSPA_INTERNAL_ASSERT(a)
-#define ASSERT_ALWAYS(a) DMITIGR_PGSPA_INTERNAL_ASSERT_ALWAYS(a)
+#define ASSERT(a) DMITIGR_INTERNAL_ASSERT(a)
+#define ASSERT_ALWAYS(a) DMITIGR_INTERNAL_ASSERT_ALWAYS(a)
 
 namespace dmitigr::pgspa {
 
@@ -1060,10 +1060,11 @@ int main(const int argc, const char* const argv[])
 {
   namespace pgfe = dmitigr::pgfe;
   namespace spa = dmitigr::pgspa;
+  namespace internal = dmitigr::internal;
   const auto executable_name = argv[0];
   try {
     if (argc > 1) {
-      const auto [cmd, opts] = spa::internal::console::command_and_options(argc, argv);
+      const auto [cmd, opts] = internal::console::command_and_options(argc, argv);
       const auto command = spa::Command::make(cmd, opts);
       command->go();
     } else {

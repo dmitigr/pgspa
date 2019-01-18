@@ -2,8 +2,9 @@
 # Copyright (C) Dmitry Igrishin
 # For conditions of distribution and use, see files LICENSE.txt
 
-cmake_minimum_required(VERSION 3.10)
 project(dmitigr_pgspa)
+
+cmake_minimum_required(VERSION 3.13)
 
 if (NOT (UNIX OR WIN32))
   message(FATAL_ERROR "unsupported target platform")
@@ -34,12 +35,17 @@ endif()
 
 # ------------------------------------------------------------------------------
 
-find_package(dmitigr_pgfe REQUIRED)
 set(CMAKE_CXX_STANDARD 17)
 set(CXX_STANDARD_REQUIRED ON)
+
+# ------------------------------------------------------------------------------
+
+find_package(dmitigr_pgfe REQUIRED)
+find_package(dmitigr_internal REQUIRED)
+
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
-add_executable(pgspa $<TARGET_OBJECTS:dmitigr_pgspa_internal> pgspa.cpp)
-set(libraries_to_link dmitigr_pgfe)
+add_executable(pgspa pgspa.cpp)
+set(libraries_to_link dmitigr_pgfe dmitigr_internal)
 if (WIN32)
   list(APPEND libraries_to_link Advapi32.lib)
 endif()
@@ -53,4 +59,3 @@ install(TARGETS pgspa
 # ------------------------------------------------------------------------------
 
 add_subdirectory(sql)
-add_subdirectory(dmitigr/pgspa/internal)
