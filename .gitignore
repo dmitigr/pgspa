@@ -1,6 +1,5 @@
-.private
-.vs
-bin
 *build*
-*.idb
-*.pdb
+*bld*
+*.[ip]db
+.vs
+.idea
