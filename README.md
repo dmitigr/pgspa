@@ -155,8 +155,8 @@ Details:
 |CMAKE_BUILD_TYPE|Debug \| Release \| RelWithDebInfo \| MinSizeRel|Debug|Debug|
 |**Installation directories**||||
 |CMAKE_INSTALL_PREFIX|*an absolute path*|"/usr/local"|"%ProgramFiles%\dmitigr_pgspa"|
-|PGSPA_BIN_INSTALL_DIR|*a path relative to CMAKE_INSTALL_PREFIX*|"bin"|*not set*|
-|PG_SHAREDIR|*an absolute path*|*not set (can be set manually)*|*not set (can be set manually)*|
+|DMITIGR_PGSPA_PGSPA_BIN_INSTALL_DIR|*a path relative to CMAKE_INSTALL_PREFIX*|"bin"|*not set*|
+|DMITIGR_PGSPA_PG_SHAREDIR|*an absolute path*|*not set (can be set manually)*|*not set (can be set manually)*|
 
 Installation in common
 ----------------------
@@ -171,9 +171,9 @@ on Linux and `C:\Program Files\PostgreSQL\10\share\extension` on Microsoft Windo
   - dmitigr_spa.control
 
 If Pgspa is building from sources the location of the "share" directory can be specified with
-PG_SHAREDIR variable (see above), like this:
+DMITIGR_PGSPA_PG_SHAREDIR variable (see above), like this:
 
-    $ cmake -DPG_SHAREDIR="/usr/local/pgsql/share" /path/to/pgspa/sources
+    $ cmake -DDMITIGR_PGSPA_PG_SHAREDIR="/usr/local/pgsql/share" /path/to/pgspa/sources
 
 Installation on Linux
 ---------------------
@@ -181,11 +181,11 @@ Installation on Linux
     $ git clone https://github.com/dmitigr/pgspa.git
     $ mkdir -p pgspa/build
     $ cd pgspa/build
-    $ cmake -DBUILD_TYPE=Debug -DPG_SHAREDIR=/usr/local/pgsql/share ..
+    $ cmake -DCMAKE_BUILD_TYPE=Debug -DDMITIGR_PGSPA_PG_SHAREDIR=/usr/local/pgsql/share ..
     $ make
     $ sudo make install
 
-The values of `BUILD_TYPE` or `PG_SHAREDIR` could be replaced.
+The values of `CMAKE_BUILD_TYPE` or `DMITIGR_PGSPA_PG_SHAREDIR` could be replaced.
 
 The `make install` command will place `dmitigr_spa` PostgreSQL extension to the directory specified with `PG_SHAREDIR`.
 
@@ -197,8 +197,8 @@ Run the Developer Command Prompt for Visual Studio and type:
     > git clone https://github.com/dmitigr/pgspa.git
     > mkdir pgspa\build
     > cd pgspa\build
-    > cmake -G "Visual Studio 15 2017 Win64" -DPG_SHAREDIR="C:\Program Files\PostgreSQL\10\share" ..
-    > cmake --build -DBUILD_TYPE=Debug ..
+    > cmake -G "Visual Studio 15 2017 Win64" -DDMITIGR_PGSPA_PG_SHAREDIR="C:\Program Files\PostgreSQL\10\share" ..
+    > cmake --build --config Debug .
 
 Next, run the Elevated Command Prompt (i.e. the command prompt with administrator privileges) and type:
 
@@ -207,9 +207,9 @@ Next, run the Elevated Command Prompt (i.e. the command prompt with administrato
 
 If the target architecture is Win32 or ARM, then "Win64" should be replaced by "Win32" or "ARM" accordingly.
 
-The values of the `BUILD_TYPE` and `PG_SHAREDIR` could be replaced.
+The values of the `BUILD_TYPE` and `DMITIGR_PGSPA_PG_SHAREDIR` could be replaced.
 
-The "install" command will place `dmitigr_spa` PostgreSQL extension to the directory specified with `PG_SHAREDIR`.
+The "install" command will place `dmitigr_spa` PostgreSQL extension to the directory specified with `DMITIGR_PGSPA_PG_SHAREDIR`.
 
 **WARNING** The target architecture must corresponds to the bitness of [Pgfe] to link!
 
