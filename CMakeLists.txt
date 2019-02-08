@@ -10,6 +10,9 @@ if (NOT (UNIX OR WIN32))
   message(FATAL_ERROR "unsupported target platform")
 endif()
 
+list(APPEND CMAKE_MODULE_PATH ${dmitigr_pgspa_SOURCE_DIR}/cmake)
+include(dmitigr)
+
 set(dmitigr_pgspa_version_part1 0)
 set(dmitigr_pgspa_version_part2 1)
 add_definitions(-DPGSPA_VERSION_PART1=${dmitigr_pgspa_version_part1})
@@ -35,29 +38,32 @@ endif()
 
 # ------------------------------------------------------------------------------
 
+enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CXX_STANDARD_REQUIRED ON)
 
+include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
+
 # ------------------------------------------------------------------------------
-
-set(CMAKE_MODULE_PATH ${dmitigr_pgspa_SOURCE_DIR}/cmake)
-
-set(libraries_to_link)
 
 find_package(Internal REQUIRED)
 message("Using ${dmitigr_internal_library} library")
-list(APPEND libraries_to_link ${dmitigr_internal_library})
 
 find_package(dmitigr_pgfe REQUIRED)
 message("Using dmitigr_pgfe library")
-list(APPEND libraries_to_link dmitigr_pgfe)
 
-include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+
 add_executable(pgspa pgspa.cpp)
+
+dmitigr_target_compile_options(pgspa)
+
+target_link_libraries(pgspa PRIVATE ${dmitigr_internal_library} dmitigr_pgfe)
 if (WIN32)
-  list(APPEND libraries_to_link Advapi32.lib)
+  target_link_libraries(pgspa PRIVATE Advapi32.lib)
 endif()
-target_link_libraries(pgspa PRIVATE ${libraries_to_link})
 
 # ------------------------------------------------------------------------------
 
@@ -66,8 +72,8 @@ install(TARGETS pgspa
 
 if (NOT ("${DMITIGR_PGSPA_PG_SHAREDIR}" STREQUAL ""))
   install(FILES
-    dmitigr_spa--0.1.sql
-    dmitigr_spa.control
+    sql/dmitigr_spa--0.1.sql
+    sql/dmitigr_spa.control
 
     DESTINATION "${DMITIGR_PGSPA_PG_SHAREDIR}/extension")
 endif()
