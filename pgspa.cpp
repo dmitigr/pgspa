@@ -6,12 +6,12 @@
 #define NOMINMAX
 #endif
 
-#include "dmitigr/internal/console.hpp"
-#include "dmitigr/internal/debug.hpp"
-#include "dmitigr/internal/config.hpp"
-#include "dmitigr/internal/os.hpp"
-#include "dmitigr/internal/filesystem.hpp"
-#include "dmitigr/internal/string.hpp"
+#include <dmitigr/internal/console.hpp>
+#include <dmitigr/internal/debug.hpp>
+#include <dmitigr/internal/config.hpp>
+#include <dmitigr/internal/os.hpp>
+#include <dmitigr/internal/filesystem.hpp>
+#include <dmitigr/internal/string.hpp>
 
 #include <dmitigr/pgfe.hpp>
 
