@@ -6,12 +6,12 @@
 #define NOMINMAX
 #endif
 
-#include <dmitigr/internal/console.hpp>
-#include <dmitigr/internal/debug.hpp>
-#include <dmitigr/internal/config.hpp>
-#include <dmitigr/internal/os.hpp>
-#include <dmitigr/internal/filesystem.hpp>
-#include <dmitigr/internal/string.hpp>
+#include <dmitigr/common/console.hpp>
+#include <dmitigr/common/debug.hpp>
+#include <dmitigr/common/config.hpp>
+#include <dmitigr/common/os.hpp>
+#include <dmitigr/common/filesystem.hpp>
+#include <dmitigr/common/string.hpp>
 
 #include <dmitigr/pgfe.hpp>
 
@@ -23,8 +23,8 @@
 #include <string>
 #include <vector>
 
-#define ASSERT(a) DMITIGR_INTERNAL_ASSERT(a)
-#define ASSERT_ALWAYS(a) DMITIGR_INTERNAL_ASSERT_ALWAYS(a)
+#define ASSERT(a) DMITIGR_ASSERT(a)
+#define ASSERT_ALWAYS(a) DMITIGR_ASSERT_ALWAYS(a)
 
 namespace dmitigr::pgspa {
 
@@ -55,7 +55,7 @@ class Handled_exception{};
 /**
  * @brief Represents the pgspa command.
  */
-class Command : public internal::console::Command {
+class Command : public console::Command {
 public:
   /**
    * @brief This factory function makes the command object from the textual type identifier.
@@ -138,7 +138,7 @@ protected:
    */
   static fs::path root_path()
   {
-    return internal::filesystem::relative_root_path(".pgspa");
+    return filesystem::relative_root_path(".pgspa");
   }
 
   /**
@@ -180,7 +180,7 @@ private:
     } else if (is_regular_file(reference) && reference.extension().empty()) {
       static const auto is_nor_empty_nor_commented = [](const std::string& line) { return (!line.empty() && line.front() != '#'); };
       const auto parent = reference.parent_path();
-      const auto paths = internal::filesystem::read_lines_to_vector_if(reference, is_nor_empty_nor_commented);
+      const auto paths = filesystem::read_lines_to_vector_if(reference, is_nor_empty_nor_commented);
 
       const auto is_in_trace = [&](const fs::path& p)
       {
@@ -283,9 +283,9 @@ private:
   /**
    * @returns The map of per-directory configuration parameters.
    */
-  static internal::config::Flat parsed_config(const fs::path& path)
+  static config::Flat parsed_config(const fs::path& path)
   {
-    internal::config::Flat result{path};
+    config::Flat result{path};
     for (const auto& pair : result.parameters()) {
       if (pair.first != "explicit")
         throw std::logic_error{"unknown parameter \"" + pair.first + "\" specified in \"" + path.string() + "\""};
@@ -449,7 +449,7 @@ protected:
     data_->name_ = std::move(name);
     data_->host_ = "localhost";
     data_->port_ = "5432";
-    data_->username_ = internal::os::current_username();
+    data_->username_ = os::current_username();
     data_->connect_timeout_ = std::chrono::seconds{8};
     ASSERT(is_invariant_ok());
   }
@@ -601,7 +601,7 @@ protected:
     explicit Sql_batch(const fs::path& path)
       : path_{path}
     {
-      vec_ = pgfe::Sql_vector::make(internal::filesystem::read_to_string(*path_));
+      vec_ = pgfe::Sql_vector::make(filesystem::read_to_string(*path_));
       ASSERT(is_invariant_ok());
     }
 
@@ -830,13 +830,13 @@ private:
         const auto sso = sql_string_position(batches[i].sql_vector(), j);
         const auto qpos = query_offset ?
           sso + *query_offset :
-          sso + internal::string::position_of_non_space(sv->sql_string(j)->to_string(), 0);
-        const auto[lnum, cnum] = internal::string::line_column_numbers_by_position(content, qpos);
+          sso + string::position_of_non_space(sv->sql_string(j)->to_string(), 0);
+        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos);
         report_file_error(*path, lnum, cnum, msg);
       } else {
         const auto content = sv->sql_string(j)->to_string();
         const auto qpos = query_offset.value_or(0);
-        const auto[lnum, cnum] = internal::string::line_column_numbers_by_position(content, qpos);
+        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos);
         std::cerr << "pgspa internal query (see below):" << lnum << ":" << cnum << ":Error: " << msg << ":\n"
           << content << "\n";
       }
@@ -1060,11 +1060,11 @@ int main(const int argc, const char* const argv[])
 {
   namespace pgfe = dmitigr::pgfe;
   namespace spa = dmitigr::pgspa;
-  namespace internal = dmitigr::internal;
+  namespace console = dmitigr::console;
   const auto executable_name = argv[0];
   try {
     if (argc > 1) {
-      const auto [cmd, opts] = internal::console::command_and_options(argc, argv);
+      const auto [cmd, opts] = console::command_and_options(argc, argv);
       const auto command = spa::Command::make(cmd, opts);
       command->go();
     } else {
