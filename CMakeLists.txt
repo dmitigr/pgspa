@@ -54,8 +54,6 @@ message("Using dmitigr_pgfe library")
 
 # ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-
 add_executable(pgspa pgspa.cpp)
 
 dmitigr_target_compile_options(pgspa)
