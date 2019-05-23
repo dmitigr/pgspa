@@ -46,11 +46,11 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ------------------------------------------------------------------------------
 
-find_package(Common REQUIRED)
+find_package(dmitigr_common REQUIRED)
 message("Using ${dmitigr_common_library} library")
 
-find_package(Pgfe REQUIRED)
-message("Using dmitigr_pgfe library")
+find_package(dmitigr_pgfe REQUIRED)
+message("Using ${dmitigr_pgfe_library} library")
 
 # ------------------------------------------------------------------------------
 
@@ -58,7 +58,7 @@ add_executable(pgspa pgspa.cpp)
 
 dmitigr_target_compile_options(pgspa)
 
-target_link_libraries(pgspa PRIVATE ${dmitigr_common_library} dmitigr_pgfe)
+target_link_libraries(pgspa PRIVATE ${dmitigr_common_library} ${dmitigr_pgfe_library})
 if (WIN32)
   target_link_libraries(pgspa PRIVATE Advapi32.lib)
 endif()
