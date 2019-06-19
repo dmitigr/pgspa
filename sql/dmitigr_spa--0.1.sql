@@ -19,7 +19,7 @@ comment on view spa_role is 'The role';
 
 --------------------------------------------------------------------------------
 create or replace view spa_schema as
-  select oid, n.* from pg_catalog.pg_namespace n
+  select n.* from pg_catalog.pg_namespace n
     where nspname not like E'pg\\_%' and
           nspname <> 'information_schema';
 comment on view spa_schema is 'The scheme';
@@ -77,7 +77,7 @@ comment on view spa_view is 'The view';
 
 --------------------------------------------------------------------------------
 create or replace view spa_trigger as
-  select n.nspname schemaname, c.relname tablename, t.oid, t.*
+  select n.nspname schemaname, c.relname tablename, t.*
     from pg_catalog.pg_trigger t
     join (pg_catalog.pg_class c join pg_catalog.pg_namespace n
             on (c.relnamespace = n.oid)) on (t.tgrelid = c.oid)
@@ -89,7 +89,7 @@ comment on view spa_trigger is 'The trigger';
 
 --------------------------------------------------------------------------------
 create or replace view spa_function as
-  select n.nspname schemaname, p.oid, p.*
+  select n.nspname schemaname, p.*
     from pg_catalog.pg_proc p
     join pg_catalog.pg_namespace n on (p.pronamespace = n.oid)
     where n.nspname not like E'pg\\_%' and
@@ -100,7 +100,7 @@ comment on view spa_function is 'The function';
 --------------------------------------------------------------------------------
 create or replace view spa_domain_constraint as
   select dn.nspname domain_schemaname, t.typname domain_name,
-         n.nspname schemaname, c.oid, c.*
+         n.nspname schemaname, c.*
     from pg_catalog.pg_constraint c
     join pg_catalog.pg_namespace n on (c.connamespace = n.oid)
     join (pg_catalog.pg_type t join pg_catalog.pg_namespace dn
@@ -112,7 +112,7 @@ comment on view spa_domain_constraint is 'The domain constraint';
 
 --------------------------------------------------------------------------------
 create or replace view spa_type as
-  select n.nspname schemaname, t.oid, t.*
+  select n.nspname schemaname, t.*
     from pg_catalog.pg_type t
     join pg_catalog.pg_namespace n on (t.typnamespace = n.oid)
     where n.nspname not like E'pg\\_%' and
