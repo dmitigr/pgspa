@@ -1,33 +1,32 @@
 Introduction to The SQL Programming Assistant for PostgreSQL
 ============================================================
 
-The SQL Programming Assistant for [PostgreSQL] (*Pgspa*) is a simple client program and (optionally)
-a PostgreSQL extension that helps one develop in SQL. **ATTENTION, this software is "alpha" quality,
-use at your own risk. Do not use with real production databases!** Any [feedback][mailbox]
-(*especially results of testing*) is highly appreciated!
+The SQL Programming Assistant for [PostgreSQL] (hereinafter referred to as
+Pgspa) - is a command line program and the PostgreSQL extension to boost the
+productivity while developing in SQL.
+
+**ATTENTION, this software is "alpha" quality, use at your own risk. Do not
+use with real production databases!**
 
 Rationale
 =========
 
-Usually, to deploy a database the following objects should be created: roles, database itself, tables and theirs
-dependencies (such as sequences or functions that used for default values), types, domains, functions, triggers,
-rules, views and others. Finally, privileges on these objects should be granted.
+Usually, to deploy a database the following objects should be created: roles,
+database, sequences, types, domains, functions, tables, triggers, rules, views
+etc. Finally, privileges on these objects should be granted. Pgspa allows to
+execute a set of SQL commands from files of arbitrary directory hierarchy in
+*one* transaction. Thus, it's easy and safe to (re-)deploy the entire database
+from the arbitrary set of SQL source files with Pgspa!
 
-To alter the existing database objects or to add the new ones it's necessary to execute the corresponding SQL queries.
-Often it's not so trivial, since the existing objects may depends on each other. `DROP ... CASCADE` commands are
-often harmful in such cases because their execution may affects the objects that are *not* a subject of refactoring
-at all. For example, if the table *t* using function *f* as a default value for some column, *f* depends on the view
-*v*, and one need to add a column to the view *v*, it must be dropped first, but since *f* depends on it, the
-`DROP VIEW v CASCADE` command will also affects *f* and *t*! Pgspa tries to help out to cope with this problem
-allowing to drop bunch of objects in *non-cascade* mode. Pgspa can also create the database objects from the SQL
-files of arbitrary directory hierarchy without worrying about the existence of these objects in the database. Both
-of these operations can be performed in the *same* transaction!
-
-Tutorial
-========
-
-Pgspa ships with the extension for PostgreSQL that can *drop* any combination of the following types of database objects
-in non-cascade mode:
+Next, consider the following example: let's the table `person` depends on the
+function `person_id()`, and the function `person_id()` is depends on the view
+`defaults`. To add a column to the view `defaults`, it must first be dropped.
+But since the function `person_id()` is depends on the view `defaults`, the SQL
+command `DROP VIEW defaults CASCADE` will affects both the function
+`person_id()` and the table `person` (with the data, of course)! To cope with
+this problem, Pgspa provides the PostgreSQL extension which allows to drop
+an any combination of the following types of database objects in a *non-cascade*
+mode:
 
   - rules;
   - triggers;
@@ -39,115 +38,134 @@ in non-cascade mode:
   - domains;
   - types.
 
-This extension can be created by using `CREATE EXTENSION dmitigr_spa` SQL query.
+Summarizing:
 
-To start working with Pgspa the root directory of the SQL files must be initialized:
+  - a client-side program `pgspa` allows to execute the SQL queries from files
+    of arbitrary directory hierarchy in *one* transaction;
+  - a server-side extension `dmitigr_spa` provides the convenient set of
+    functions to drop the interdependent database objects in the *non-cascade*
+    mode;
+  - together, this allows to speed up the database development process.
+
+Tutorial
+========
+
+To start working with Pgspa the directory with the SQL source files must be
+marked as the "project directory" by using `pgspa init` command:
 
     $ cd /path/to/the/database/project
     $ pgspa init
 
-This command will create the directory `.pgspa` in the current working directory where the command `pgspa init` was called.
+This command will create the directory called `.pgspa`.
 
-The database project directory or any of its subdirectories can contains the following files:
+The project directory and its subdirectories can contains the following files:
 
   - the SQL sources - files with ".sql" extension;
   - the shortcuts - files without extension;
   - .pgspa - per-directory configuration file.
 
-The SQL files, directories and shortcuts are *references*. Reference names cannot be empty or starts with the dot (".").
+The SQL source files, directories and shortcuts are so called *references*. The
+reference name cannot be empty or starts with the dot (".").
 
-SQL sources
------------
+The extension for PostgreSQL can be created by using the following SQL query:
 
-Each SQL query (except the very last) must ends with the semicolon. At this moment, SQL queries cannot
-be parameterized, but there are plans to add this feature.
+```sql
+CREATE EXTENSION dmitigr_spa
+```
 
-SQL sources can be grouped in the arbitrary directory hierarchies. They will be executed in lexicographical
-order of the file names. Each directory can contain the both file `foo.sql` (so called *heading file*) and
-directory `foo/`. In this case, the `pgspa exec foo`will run the queries of `foo.sql` at first, and then
-the queries of `foo/`.
+SQL source files
+----------------
 
-The concrete SQL file and/or set of SQL files and directories can be specified as the arguments of the `exec`
-command, for example:
+Each SQL query (except the very last) must ends with the semicolon. At this
+moment, SQL queries cannot be parameterized, but there are plans to add this
+feature in the future.
+
+The SQL source files can be organized in the arbitrary directory hierarchies.
+They will be executed in lexicographical order of the file names. Each directory
+can contain the both file `foo.sql` (so called *heading file*) and directory
+`foo/`. In this case, the command `pgspa exec foo` will execute the queries of
+`foo.sql` at first, and then the queries of `foo/`.
+
+The concrete SQL file and/or set of SQL files and directories can be specified
+as the arguments of the `exec` command, for example:
 
     $ pgspa exec foo bar.sql baz
 
-All queries of the specified set will be run in the same transaction. Since Pgspa is using GNU style for
-reporting error messages, [Emacs] users can run Pgspa in the [Compilation Mode][emacs-compilation-mode]
-to immediately jump to the erroneous queries.
+All queries of the specified bunch will be run in the *same* transaction. Since
+Pgspa is using GNU style for reporting error messages, [Emacs] users can run
+Pgspa in the [Compilation Mode][emacs-compilation-mode] to immediately jump to
+the erroneous queries.
 
 Shortcuts
 ---------
 
-Shortcuts - are regular files without extension that contains the names of SQL files, directories and/or shortcuts
-(i.e. *references*) relative to the directory in which the shortcut is located. Shortcuts are useful to define the
-sequence of references to be executed without the need to specify this sequence in the command line. For
-example, consider the following simple case:
+Shortcuts - are regular files without an extension that contains the names of
+SQL files, directories and/or shortcuts (i.e. *references*) relative to the
+directory in which the shortcut is located. Shortcuts are useful to define a
+sequence of references to be executed without the need to specifying them in
+the command line each time. For example, consider the following simple case:
 
     schemas/create.sql
             drop.sql
 
-Here obviously, that `create.sql` contains the DDL queries to create the objects of the schemas, and `drop.sql`
-contains the DDL queries to drop the objects of the schemas. To *recreate* the objects, the following command
-can be used:
+Here obviously, that `create.sql` contains the DDL queries to create the objects
+of the schemas, and `drop.sql` contains the DDL queries to drop the objects of
+the schemas. To *recreate* the objects, the following command can be used:
 
     $ pgspa exec schemas/drop schemas/create
 
-The same effect can be achieved by creating the shortcut `recreate` with the following lines:
+The same effect can be achieved by creating the shortcut `recreate` - a file
+named as `recreate` with the following content:
 
     drop
     create
 
-Then the shortcut can be used like that:
+Then this shortcut can be used like that:
 
     $ pgspa exec schemas/recreate
 
-But there are still some gotcha. The queries of the whole "schema" directory can be accidentally executed as simple as:
+**Note, that cyclic shortcuts are not allowed.**
+
+But there are still some gotcha: all queries of the whole `schemas` directory
+can be accidentally executed as simple as:
 
     $ pgspa exec schemas
 
-It will lead to executing `schema/create.sql` and then `schema/drop.sql`. It is absolutely senselessly and may be even
-dangerous, since all of the objects will be eventually dropped. Such incidents can be prevented by using the `explicit`
-per-directory configuration parameter (see below).
-
-**Note** Cyclic shortcuts are *not* allowed.
+It will lead to executing `schemas/create.sql` first and then `schemas/drop.sql`.
+It's absolutely senselessly and may be even dangerous, since all of the objects
+will be eventually dropped. Such incidents can be prevented by using
+per-directory configuration (namely, the parameter `explicit`, described below).
 
 Per-directory configuration
 ---------------------------
 
-Each subdirectory of the database project directory can contain the configuration file. The format of this file
-is very simple:
+Each subdirectory of the project directory can contain the configuration file.
+The format of this file is very simple:
 
     parameter1 = value_without_spaces
     parameter2 = 'value with spaces'
     # commented_out_parameter_with_empty_value =
 
-The currently supported parameters are:
+Currently supported parameters are:
 
-  - `explicit` - is a boolean parameter (possible values are "yes"/"no") which prevents to run *all* the SQL
-     queries the directory contains. Only SQL queries by the *references* that are specified explicitly allowed to run.
-     For example, if the directory `foo` is configured as `explicit`, the only way to run the SQL queries this
-     directory contains is to use one of the reference of this directory, like `foo/bar` or `foo/baz.sql`.
-
-Installation
-============
+  - `explicit` - is a boolean parameter (possible values are "yes"/"no") which
+    allows to run only SQL queries by the explicitly specified *references*.
+    For example, if the directory `foo` is marked with `explicit` parameter,
+    the only way to run the SQL queries of this directory is to use one of the
+    reference of this directory, like `foo/bar` or `foo/baz.sql`.
 
 Dependencies
-------------
+============
 
 - [CMake] build system version 3.10+;
-- [Pgfe] library;
-- [dmitigr_internal] library;
-- C++17 compiler ([GCC] 8+ or [Microsoft Visual C++][Visual_Studio] 15.7+).
+- C++17 compiler ([GCC] 7.4+ or [Microsoft Visual C++][Visual_Studio] 15.7+);
+- [Cefeika][dmitigr_cefeika] libraries.
 
-Build time settings
--------------------
+Customization
+=============
 
-Settings that may be specified at build time by using [CMake] variables are:
-  1. the type of the build;
-  2. installation directories.
-
-Details:
+The table below (may need to use horizontal scrolling for full view) contains
+variables which can be passed to CMake for customization.
 
 |CMake variable|Possible values|Default on Unix|Default on Windows|
 |:-------------|:--------------|:--------------|:-----------------|
@@ -158,22 +176,20 @@ Details:
 |DMITIGR_PGSPA_PGSPA_BIN_INSTALL_DIR|*a path relative to CMAKE_INSTALL_PREFIX*|"bin"|*not set*|
 |DMITIGR_PGSPA_PG_SHAREDIR|*an absolute path*|*not set (can be set manually)*|*not set (can be set manually)*|
 
-Installation in common
-----------------------
+Installation
+============
 
-Pgspa ships with the PostgreSQL extension called `dmitigr_spa`. It should be placed to the directory
-where the PostgreSQL extensions resides. (Usually, it something like `/usr/local/pgsql/share/extension`
-on Linux and `C:\Program Files\PostgreSQL\10\share\extension` on Microsoft Windows.)
+Pgspa ships with the PostgreSQL extension called `dmitigr_spa` which consists
+of two files:
 
-`dmitigr_spa` extension consists of two files:
-
-  - dmitigr_spa--1.0.sql
+  - dmitigr_spa--0.1.sql
   - dmitigr_spa.control
 
-If Pgspa is building from sources the location of the "share" directory can be specified with
-DMITIGR_PGSPA_PG_SHAREDIR variable (see above), like this:
+It will be placed to the directory specified via the `DMITIGR_PGSPA_PG_SHAREDIR`
+variable. (Usually, it should be something like `/usr/local/pgsql/share/extension`
+on Linux and `C:\Program Files\PostgreSQL\10\share\extension` on Microsoft Windows.)
 
-    $ cmake -DDMITIGR_PGSPA_PG_SHAREDIR="/usr/local/pgsql/share" /path/to/pgspa/sources
+The default build type is "Debug".
 
 Installation on Linux
 ---------------------
@@ -181,18 +197,14 @@ Installation on Linux
     $ git clone https://github.com/dmitigr/pgspa.git
     $ mkdir -p pgspa/build
     $ cd pgspa/build
-    $ cmake -DCMAKE_BUILD_TYPE=Debug -DDMITIGR_PGSPA_PG_SHAREDIR=/usr/local/pgsql/share ..
+    $ cmake -DDMITIGR_PGSPA_PG_SHAREDIR=/usr/local/pgsql/share ..
     $ make
     $ sudo make install
-
-The values of `CMAKE_BUILD_TYPE` or `DMITIGR_PGSPA_PG_SHAREDIR` could be replaced.
-
-The `make install` command will place `dmitigr_spa` PostgreSQL extension to the directory specified with `PG_SHAREDIR`.
 
 Installation on Microsoft Windows
 ---------------------------------
 
-Run the Developer Command Prompt for Visual Studio and type:
+Run Developer Command Prompt for Visual Studio and type:
 
     > git clone https://github.com/dmitigr/pgspa.git
     > mkdir pgspa\build
@@ -200,18 +212,11 @@ Run the Developer Command Prompt for Visual Studio and type:
     > cmake -G "Visual Studio 15 2017 Win64" -DDMITIGR_PGSPA_PG_SHAREDIR="C:\Program Files\PostgreSQL\10\share" ..
     > cmake --build --config Debug .
 
-Next, run the Elevated Command Prompt (i.e. the command prompt with administrator privileges) and type:
+Next, run the elevated command prompt (i.e. the command prompt with
+administrator privileges) and type:
 
     > cd pgspa\build
     > cmake -DBUILD_TYPE=Debug -P cmake_install.cmake
-
-If the target architecture is Win32 or ARM, then "Win64" should be replaced by "Win32" or "ARM" accordingly.
-
-The values of the `BUILD_TYPE` and `DMITIGR_PGSPA_PG_SHAREDIR` could be replaced.
-
-The "install" command will place `dmitigr_spa` PostgreSQL extension to the directory specified with `DMITIGR_PGSPA_PG_SHAREDIR`.
-
-**WARNING** The target architecture must corresponds to the bitness of [Pgfe] to link!
 
 License
 =======
@@ -219,41 +224,24 @@ License
 Pgspa is distributed under zlib license. For conditions of distribution and use,
 see file `LICENSE.txt`.
 
-Contributions, sponsorship, partnership
-=======================================
+Participation
+=============
 
-Pgspa has been developed on the own funds. Donations are welcome!
-
-If you are using Pgspa for commercial purposes it is reasonable to donate or
-even sponsor the further development of Pgspa.
-
-To make a donation, via [PayPal] please go [here][paypal1] or [here][paypal2].
-
-If you need a commercial support, or you need to develop a custom client-side or
-server-side software based on [PostgreSQL], please contact us by sending email to <dmitigr@gmail.com>.
-
-Pgspa is a free software. Enjoy using it!
-
-Feedback
-========
-
-Any feedback are welcome. Contact us by sending email to <dmitigr@gmail.com>.
+Contributions and any feedback are highly appreciated! Donations are
+[welcome][dmitigr_paypal]!
 
 Copyright
 =========
 
-Copyright (C) Dmitry Igrishin
+Copyright (C) [Dmitry Igrishin][dmitigr_mail]
 
-[dmitigr_internal]: https://github.com/dmitigr/internal.git
-[Pgfe]: https://github.com/dmitigr/pgfe.git
-[mailbox]: mailto:dmitigr@gmail.com
+[dmitigr_mail]: mailto:dmitigr@gmail.com
+[dmitigr_paypal]: https://paypal.me/dmitigr
+[dmitigr_cefeika]: https://github.com/dmitigr/cefeika.git
 
 [CMake]: https://cmake.org/
 [Emacs]: https://www.gnu.org/software/emacs/
 [emacs-compilation-mode]: https://www.gnu.org/software/emacs/manual/html_node/emacs/Compilation-Mode.html
 [GCC]: https://gcc.gnu.org/
-[PayPal]: https://paypal.com/
-[paypal1]: https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=38TY2K8KYKYJC&lc=US&item_name=Pgfe%20library&item_number=1&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted
-[paypal2]: https://paypal.me/dmitigr
 [PostgreSQL]: https://www.postgresql.org/
 [Visual_Studio]: https://www.visualstudio.com/
