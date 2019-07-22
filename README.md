@@ -1,5 +1,5 @@
-Introduction to The SQL Programming Assistant for PostgreSQL
-============================================================
+The SQL Programming Assistant for PostgreSQL
+============================================
 
 The SQL Programming Assistant for [PostgreSQL] (hereinafter referred to as
 Pgspa) - is a command line program and the PostgreSQL extension to boost the
@@ -7,9 +7,6 @@ productivity while developing in SQL.
 
 **ATTENTION, this software is "alpha" quality, use at your own risk. Do not
 use with real production databases!**
-
-Rationale
-=========
 
 Usually, to deploy a database the following objects should be created: roles,
 database, sequences, types, domains, functions, tables, triggers, rules, views
