@@ -13,10 +13,10 @@ endif()
 list(APPEND CMAKE_MODULE_PATH ${dmitigr_pgspa_SOURCE_DIR}/cmake)
 include(dmitigr)
 
-set(dmitigr_pgspa_version_part1 0)
-set(dmitigr_pgspa_version_part2 1)
-add_definitions(-DPGSPA_VERSION_PART1=${dmitigr_pgspa_version_part1})
-add_definitions(-DPGSPA_VERSION_PART2=${dmitigr_pgspa_version_part2})
+set(dmitigr_pgspa_version_major 0)
+set(dmitigr_pgspa_version_minor 1)
+add_definitions(-DPGSPA_VERSION_MAJOR=${dmitigr_pgspa_version_major})
+add_definitions(-DPGSPA_VERSION_MINOR=${dmitigr_pgspa_version_minor})
 
 # ------------------------------------------------------------------------------
 
@@ -46,19 +46,13 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ------------------------------------------------------------------------------
 
-find_package(dmitigr_common REQUIRED)
-message("Using ${dmitigr_common_library} library")
-
-find_package(dmitigr_pgfe REQUIRED)
-message("Using ${dmitigr_pgfe_library} library")
+find_package(dmitigr_cefeika REQUIRED COMPONENTS util pgfe)
 
 # ------------------------------------------------------------------------------
 
 add_executable(pgspa pgspa.cpp)
-
 dmitigr_target_compile_options(pgspa)
-
-target_link_libraries(pgspa PRIVATE ${dmitigr_common_library} ${dmitigr_pgfe_library})
+target_link_libraries(pgspa PRIVATE dmitigr::util dmitigr::pgfe)
 if (WIN32)
   target_link_libraries(pgspa PRIVATE Advapi32.lib)
 endif()

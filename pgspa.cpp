@@ -6,12 +6,12 @@
 #define NOMINMAX
 #endif
 
-#include <dmitigr/common/console.hpp>
-#include <dmitigr/common/debug.hpp>
-#include <dmitigr/common/config.hpp>
-#include <dmitigr/common/os.hpp>
-#include <dmitigr/common/filesystem.hpp>
-#include <dmitigr/common/string.hpp>
+#include <dmitigr/util/console.hpp>
+#include <dmitigr/util/debug.hpp>
+#include <dmitigr/util/config.hpp>
+#include <dmitigr/util/os.hpp>
+#include <dmitigr/util/filesystem.hpp>
+#include <dmitigr/util/string.hpp>
 
 #include <dmitigr/pgfe.hpp>
 
@@ -28,7 +28,7 @@
 
 namespace dmitigr::pgspa {
 
-namespace fs = std::filesystem;
+namespace filesystem = std::filesystem;
 
 /**
  * @returns The general usage info.
@@ -136,15 +136,15 @@ protected:
   /**
    * @returns The root path of the project.
    */
-  static fs::path root_path()
+  static filesystem::path root_path()
   {
-    return filesystem::relative_root_path(".pgspa");
+    return fs::relative_root_path(".pgspa");
   }
 
   /**
    * @returns The vector of paths to SQL files of the specified ref.
    */
-  static std::vector<fs::path> sql_paths(const fs::path& ref)
+  static std::vector<filesystem::path> sql_paths(const filesystem::path& ref)
   {
     return sql_paths(ref, {ref});
   }
@@ -162,14 +162,14 @@ private:
   /**
    * @returns The vector of paths to SQL files by the specified `reference`.
    */
-  static std::vector<fs::path> sql_paths(const fs::path& reference, std::vector<fs::path> trace)
+  static std::vector<filesystem::path> sql_paths(const filesystem::path& reference, std::vector<filesystem::path> trace)
   {
-    std::vector<fs::path> result;
+    std::vector<filesystem::path> result;
 
     if (const auto name = reference.filename(); name.empty() || name.string().front() == '.')
       throw std::logic_error{"the reference name cannot be empty or starts with the dot (\".\")"};
 
-    static const auto sql_file_path = [](const fs::path& reference)
+    static const auto sql_file_path = [](const filesystem::path& reference)
     {
       auto file = reference;
       return file.replace_extension(".sql");
@@ -180,9 +180,9 @@ private:
     } else if (is_regular_file(reference) && reference.extension().empty()) {
       static const auto is_nor_empty_nor_commented = [](const std::string& line) { return (!line.empty() && line.front() != '#'); };
       const auto parent = reference.parent_path();
-      const auto paths = filesystem::read_lines_to_vector_if(reference, is_nor_empty_nor_commented);
+      const auto paths = fs::read_lines_to_vector_if(reference, is_nor_empty_nor_commented);
 
-      const auto is_in_trace = [&](const fs::path& p)
+      const auto is_in_trace = [&](const filesystem::path& p)
       {
         const auto b = cbegin(trace), e = cend(trace);
         return std::find(b, e, p) != e;
@@ -204,7 +204,7 @@ private:
       }
     } else if (is_directory(reference)) {
       if (const auto config = reference / ".pgspa"; is_regular_file(config)) {
-        if (auto params = parsed_config(config); params.boolean_parameter("explicit").value_or(false)) {
+        if (auto params = parsed_config(config); params->boolean_parameter("explicit").value_or(false)) {
           throw std::runtime_error{"the references of the directory \"" + reference.string() +
             "\" are allowed to be used only explicitly"};
         }
@@ -241,7 +241,7 @@ private:
   /**
    * @brief Appends the `appendix` to the `result`.
    */
-  static void push_back(std::vector<fs::path>& result, std::vector<fs::path>&& appendix)
+  static void push_back(std::vector<filesystem::path>& result, std::vector<filesystem::path>&& appendix)
   {
     result.insert(cend(result), std::move_iterator(begin(appendix)), std::move_iterator(end(appendix)));
   }
@@ -249,7 +249,7 @@ private:
   /**
    * @brief Appends the `path` to the `result` if it's not already there.
    */
-  static void push_back_if_not_exists(std::vector<fs::path>& result, fs::path path)
+  static void push_back_if_not_exists(std::vector<filesystem::path>& result, filesystem::path path)
   {
     if (std::none_of(cbegin(result), cend(result), [&](const auto& elem) { return elem == path; }))
       result.push_back(std::move(path));
@@ -258,7 +258,7 @@ private:
   /**
    * @brief Appends the `e` to the `result` if `e` represents the SQL file or the directory.
    */
-  static void push_back_if_sql_file_or_directory(std::vector<fs::path>& result, const fs::directory_entry& e)
+  static void push_back_if_sql_file_or_directory(std::vector<filesystem::path>& result, const filesystem::directory_entry& e)
   {
     const auto& path = e.path();
     if (is_regular_file(path) && path.extension() == ".sql")
@@ -270,12 +270,12 @@ private:
   /**
    * @returns The vector of database object names from the specified `path`.
    */
-  static std::vector<fs::path> refs_of_directory(const fs::path& path)
+  static std::vector<filesystem::path> refs_of_directory(const filesystem::path& path)
   {
     if (!is_directory(path))
       throw std::runtime_error{"directory \"" + path.string() + "\" does not exists"};
-    std::vector<fs::path> result;
-    for (const auto& e : fs::directory_iterator{path})
+    std::vector<filesystem::path> result;
+    for (const auto& e : filesystem::directory_iterator{path})
       push_back_if_sql_file_or_directory(result, e);
     return result;
   }
@@ -283,10 +283,10 @@ private:
   /**
    * @returns The map of per-directory configuration parameters.
    */
-  static config::Flat parsed_config(const fs::path& path)
+  static std::unique_ptr<config::Flat> parsed_config(const filesystem::path& path)
   {
-    config::Flat result{path};
-    for (const auto& pair : result.parameters()) {
+    auto result = config::Flat::make(path);
+    for (const auto& pair : result->parameters()) {
       if (pair.first != "explicit")
         throw std::logic_error{"unknown parameter \"" + pair.first + "\" specified in \"" + path.string() + "\""};
     }
@@ -363,8 +363,8 @@ public:
 
   void run() override
   {
-    constexpr int major_version = PGSPA_VERSION_PART1;
-    constexpr int minor_version = PGSPA_VERSION_PART2;
+    constexpr int major_version = PGSPA_VERSION_MAJOR;
+    constexpr int minor_version = PGSPA_VERSION_MINOR;
     std::cout << major_version << "." << minor_version << "\n";
   }
 };
@@ -391,12 +391,12 @@ public:
 
   void run() override
   {
-    const auto p = fs::perms::owner_all |
-      fs::perms::group_read |  fs::perms::group_exec |
-      fs::perms::others_read | fs::perms::others_exec;
-    const fs::path pgspa{".pgspa"};
-    fs::create_directory(pgspa);
-    fs::permissions(pgspa, p);
+    const auto p = filesystem::perms::owner_all |
+      filesystem::perms::group_read  | filesystem::perms::group_exec |
+      filesystem::perms::others_read | filesystem::perms::others_exec;
+    const filesystem::path pgspa{".pgspa"};
+    filesystem::create_directory(pgspa);
+    filesystem::permissions(pgspa, p);
   }
 };
 
@@ -598,10 +598,10 @@ protected:
    */
   class Sql_batch final {
   public:
-    explicit Sql_batch(const fs::path& path)
+    explicit Sql_batch(const filesystem::path& path)
       : path_{path}
     {
-      vec_ = pgfe::Sql_vector::make(filesystem::read_to_string(*path_));
+      vec_ = pgfe::Sql_vector::make(fs::read_to_string(*path_));
       ASSERT(is_invariant_ok());
     }
 
@@ -611,7 +611,7 @@ protected:
       ASSERT(is_invariant_ok());
     }
 
-    const std::optional<fs::path>& path() const
+    const std::optional<filesystem::path>& path() const
     {
       return path_;
     }
@@ -634,7 +634,7 @@ protected:
     }
 
     std::unique_ptr<pgfe::Sql_vector> vec_;
-    std::optional<fs::path> path_;
+    std::optional<filesystem::path> path_;
   };
 
   /**
@@ -708,9 +708,9 @@ protected:
 
       if (!conn) {
         conn = pgfe::Connection_options::make()->
-          set_tcp_host_name(host_name())->
-          set_tcp_host_address(host_address())->
-          set_tcp_host_port(std::stoi(host_port()))->
+          set_net_hostname(host_name())->
+          set_net_address(host_address())->
+          set_port(std::stoi(host_port()))->
           set_database(database())->
           set_username(username())->
           set_password(password())->
@@ -730,7 +730,7 @@ protected:
   /**
    * @brief Executes the SQL commands of the specified files in a same transaction.
    */
-  static std::size_t execute(pgfe::Connection* const conn, const std::vector<fs::path>& paths)
+  static std::size_t execute(pgfe::Connection* const conn, const std::vector<filesystem::path>& paths)
   {
     return execute(conn, make_batches(paths));
   }
@@ -776,7 +776,7 @@ private:
   /**
    * @brief Prints the Emacs-friendly information about an error to the standard error.
    */
-  static void report_file_error(const fs::path& path, const std::size_t lnum, const std::size_t cnum, const std::string& msg)
+  static void report_file_error(const filesystem::path& path, const std::size_t lnum, const std::size_t cnum, const std::string& msg)
   {
     /*
      * Use GNU style for reporting error messages:
@@ -926,7 +926,7 @@ private:
   /**
    * @returns The vector of SQL batches from the vector of file paths.
    */
-  static std::vector<Sql_batch> make_batches(const std::vector<fs::path>& paths)
+  static std::vector<Sql_batch> make_batches(const std::vector<filesystem::path>& paths)
   {
     std::vector<Sql_batch> result;
     result.reserve(paths.size());
