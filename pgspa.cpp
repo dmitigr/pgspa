@@ -46,19 +46,19 @@ std::string usage()
 }
 
 /**
- * @brief Represents a dummy exception thrown after the real exception was handled.
+ * @brief A dummy exception to throw after handling of a real exception.
  *
- * @remarks The handlers of the exceptions of this type should not have side any effects.
+ * @remarks The exception handlers of this type shouldn't have side effects.
  */
 class Handled_exception{};
 
 /**
- * @brief Represents the pgspa command.
+ * @brief A command of pgspa utility.
  */
 class Command : public console::Command {
 public:
   /**
-   * @brief This factory function makes the command object from the textual type identifier.
+   * @returns A new instance from the textual type identifier.
    */
   template<typename ... Types>
   static std::unique_ptr<Command> make(const std::string& cmd, Types&& ... opts);
@@ -102,10 +102,10 @@ protected:
       throw_invalid_usage("invalid option \"" + option + "\"");
   };
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   /**
-   * @returns `true` if "--help" options was specified.
+   * @returns `true` if "--help" option was specified, or `false` otherwise.
    */
   bool is_help_requested() const
   {
@@ -131,7 +131,7 @@ protected:
     return true;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   /**
    * @returns The root path of the project.
@@ -142,7 +142,7 @@ protected:
   }
 
   /**
-   * @returns The vector of paths to SQL files of the specified ref.
+   * @returns The vector of paths to SQL files of the specified `ref`.
    */
   static std::vector<filesystem::path> sql_paths(const filesystem::path& ref)
   {
@@ -151,9 +151,9 @@ protected:
 
 private:
   /**
-   * @brief Run the current command.
+   * @brief Runs the current command.
    *
-   * @remarks The API function `go()` wraps this function.
+   * @remarks The API function `go()` calls this function.
    *
    * @see go().
    */
@@ -247,7 +247,7 @@ private:
   }
 
   /**
-   * @brief Appends the `path` to the `result` if it's not already there.
+   * @brief Appends `path` to `result` if it's not already there.
    */
   static void push_back_if_not_exists(std::vector<filesystem::path>& result, filesystem::path path)
   {
@@ -256,7 +256,7 @@ private:
   }
 
   /**
-   * @brief Appends the `e` to the `result` if `e` represents the SQL file or the directory.
+   * @brief Appends `e` to `result` if `e` represents the SQL file or the directory.
    */
   static void push_back_if_sql_file_or_directory(std::vector<filesystem::path>& result, const filesystem::directory_entry& e)
   {
@@ -281,7 +281,7 @@ private:
   }
 
   /**
-   * @returns The map of per-directory configuration parameters.
+   * @returns The per-directory configuration.
    */
   static std::unique_ptr<config::Flat> parsed_config(const filesystem::path& path)
   {
@@ -296,10 +296,10 @@ private:
   bool help_{};
 };
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
- * @brief Reprensents the "help" command.
+ * @brief The "help" command.
  */
 class Help final : public Command {
 public:
@@ -341,10 +341,10 @@ private:
   std::unique_ptr<Command> command_;
 };
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
- * @brief Reprensents the "version" command.
+ * @brief The "version" command.
  */
 class Version final : public Command {
 public:
@@ -369,10 +369,10 @@ public:
   }
 };
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
- * @brief Reprensents the "init" command.
+ * @brief The "init" command.
  */
 class Init final : public Command {
 public:
@@ -400,14 +400,15 @@ public:
   }
 };
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 namespace detail {
 
 /**
- * @brief Reprensents the base for all "online" commands.
+ * @brief The base for all "online" commands.
  *
- * The "online" command is command that requires the interaction with the server to run.
+ * An "online" command - is a command that requires the interaction with a
+ * PostgreSQL server to run.
  */
 class Online : public Command {
 protected:
@@ -485,7 +486,7 @@ protected:
     ASSERT(is_invariant_ok());
   };
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   std::string name() const override final
   {
@@ -591,10 +592,10 @@ protected:
       return data_->connect_timeout_;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   /**
-   * @brief Represents the batch of SQL commands of a file.
+   * @brief A batch of SQL commands of a file.
    */
   class Sql_batch final {
   public:
@@ -638,7 +639,7 @@ protected:
   };
 
   /**
-   * @brief Represents the transaction guard.
+   * @brief A transaction guard.
    */
   class Tx_guard final {
   public:
@@ -668,7 +669,7 @@ protected:
         conn->perform("rollback");
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     ~Tx_guard()
     {
@@ -692,7 +693,7 @@ protected:
     pgfe::Connection* conn_;
   };
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   /**
    * @returns The opened connection to the PostgreSQL server.
@@ -728,7 +729,7 @@ protected:
   }
 
   /**
-   * @brief Executes the SQL commands of the specified files in a same transaction.
+   * @brief Executes the SQL commands of the specified files in a transaction.
    */
   static std::size_t execute(pgfe::Connection* const conn, const std::vector<filesystem::path>& paths)
   {
@@ -753,23 +754,32 @@ private:
     std::size_t result{};
     const auto count = vec->sql_string_count();
     using Counter = std::remove_const_t<decltype (count)>;
-    for (Counter i = 0; i < count; ++i)
+    for (Counter i = 0; i < count; ++i) {
       if (!vec->sql_string(i)->is_query_empty())
         ++result;
+    }
     return result;
   }
 
   /**
-   * @returns The starting string position of the SQL string at position `pos` of `vec`.
+   * @returns The starting query string position of the SQL string at `pos` of `vec`.
    */
-  static std::size_t sql_string_position(const pgfe::Sql_vector* const vec, const std::size_t pos)
+  static std::size_t sql_query_string_position(const pgfe::Sql_vector* const vec, const std::size_t pos)
   {
     ASSERT(vec);
     ASSERT(pos < vec->sql_string_count());
-    std::size_t result{};
-    using Counter = std::remove_const_t<decltype (pos)>;
-    for (Counter i = 0; i < pos; ++i)
-      result += vec->sql_string(i)->to_string().size() + 1;
+
+    static const auto sql_string_position = [](const pgfe::Sql_vector* const vec, const std::size_t pos)
+    {
+      std::size_t result{};
+      using Counter = std::remove_const_t<decltype (pos)>;
+      for (Counter i = 0; i < pos; ++i)
+        result += vec->sql_string(i)->to_string().size() + 1;
+      return result;
+    };
+
+    const auto junk_size = vec->sql_string(pos)->to_string().size() - vec->sql_string(pos)->to_query_string().size();
+    const auto result = sql_string_position(vec, pos) + junk_size;
     return result;
   };
 
@@ -822,22 +832,22 @@ private:
       const std::optional<std::size_t> query_offset = {})
     {
       ASSERT(i < batches.size());
-      ASSERT(j < batches[i].sql_vector()->sql_string_count());
-      ASSERT(!batches[i].sql_vector()->sql_string(j)->is_query_empty());
-      const auto* const sv = batches[i].sql_vector();
+      const auto* const sql_vector = batches[i].sql_vector();
+      ASSERT(j < sql_vector->sql_string_count());
+      ASSERT(!sql_vector->sql_string(j)->is_query_empty());
       if (const auto& path = batches[i].path()) {
-        const auto content = sv->to_string();
-        const auto sso = sql_string_position(batches[i].sql_vector(), j);
+        const auto content = sql_vector->to_string();
+        const auto ssp = sql_query_string_position(sql_vector, j);
         const auto qpos = query_offset ?
-          sso + *query_offset :
-          sso + string::position_of_non_space(sv->sql_string(j)->to_string(), 0);
-        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos);
-        report_file_error(*path, lnum, cnum, msg);
+          ssp + *query_offset :
+          ssp + string::position_of_non_space(sql_vector->sql_string(j)->to_query_string(), 0);
+        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos - 1);
+        report_file_error(*path, lnum + 1, cnum + 1, msg);
       } else {
-        const auto content = sv->sql_string(j)->to_string();
+        const auto content = sql_vector->sql_string(j)->to_string();
         const auto qpos = query_offset.value_or(0);
-        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos);
-        std::cerr << "pgspa internal query (see below):" << lnum << ":" << cnum << ":Error: " << msg << ":\n"
+        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos - 1);
+        std::cerr << "pgspa internal query (see below):" << lnum + 1 << ":" << cnum + 1 << ":Error: " << msg << ":\n"
           << content << "\n";
       }
     };
@@ -901,8 +911,8 @@ private:
     } while (iteration_successes_count > 0);
 
     /*
-     * If there are queries, which has not been executed without errors
-     * it is necessary to report about them and to throw an exception.
+     * If there are queries, which was not executed without errors
+     * it's necessary to report about them and to throw an exception.
      */
     if (successes_count < total_count) {
       const auto batches_execution_statuses_size = batches_execution_statuses.size();
@@ -935,7 +945,7 @@ private:
     return result;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   struct Data {
     std::string name_;
@@ -958,10 +968,10 @@ private:
 
 } // namespace detail
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
- * @brief Reprensents the `exec` command.
+ * @brief The `exec` command.
  *
  * The `exec` command executes the bunch of specified SQL queries.
  */
@@ -1036,7 +1046,7 @@ private:
   std::vector<std::string> args_;
 };
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 template<typename ... Types>
 std::unique_ptr<Command> Command::make(const std::string& cmd, Types&& ... opts)
