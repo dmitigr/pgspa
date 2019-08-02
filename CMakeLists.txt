@@ -14,7 +14,7 @@ list(APPEND CMAKE_MODULE_PATH ${dmitigr_pgspa_SOURCE_DIR}/cmake)
 include(dmitigr)
 
 set(dmitigr_pgspa_version_major 0)
-set(dmitigr_pgspa_version_minor 1)
+set(dmitigr_pgspa_version_minor 2)
 add_definitions(-DPGSPA_VERSION_MAJOR=${dmitigr_pgspa_version_major})
 add_definitions(-DPGSPA_VERSION_MINOR=${dmitigr_pgspa_version_minor})
 
