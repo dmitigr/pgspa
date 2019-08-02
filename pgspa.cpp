@@ -30,6 +30,9 @@ namespace dmitigr::pgspa {
 
 namespace filesystem = std::filesystem;
 
+const filesystem::path root_marker{".pgspa"};
+const filesystem::path per_directory_config{".pgspa_config"};
+
 /**
  * @returns The general usage info.
  */
@@ -138,7 +141,7 @@ protected:
    */
   static filesystem::path root_path()
   {
-    return fs::relative_root_path(".pgspa");
+    return fs::relative_root_path(root_marker);
   }
 
   /**
@@ -203,7 +206,7 @@ private:
         }
       }
     } else if (is_directory(reference)) {
-      if (const auto config = reference / ".pgspa"; is_regular_file(config)) {
+      if (const auto config = reference / per_directory_config; is_regular_file(config)) {
         if (auto params = parsed_config(config); params->boolean_parameter("explicit").value_or(false)) {
           throw std::runtime_error{"the references of the directory \"" + reference.string() +
             "\" are allowed to be used only explicitly"};
@@ -394,9 +397,8 @@ public:
     const auto p = filesystem::perms::owner_all |
       filesystem::perms::group_read  | filesystem::perms::group_exec |
       filesystem::perms::others_read | filesystem::perms::others_exec;
-    const filesystem::path pgspa{".pgspa"};
-    filesystem::create_directory(pgspa);
-    filesystem::permissions(pgspa, p);
+    filesystem::create_directory(root_marker);
+    filesystem::permissions(root_marker, p);
   }
 };
 

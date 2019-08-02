@@ -59,7 +59,7 @@ The project directory and its subdirectories can contains the following files:
 
   - the SQL sources - files with ".sql" extension;
   - the shortcuts - files without extension;
-  - .pgspa - per-directory configuration file.
+  - .pgspa_config - per-directory configuration file.
 
 The SQL source files, directories and shortcuts are so called *references*. The
 reference name cannot be empty or starts with the dot (".").
@@ -136,8 +136,8 @@ per-directory configuration (namely, the parameter `explicit`, described below).
 Per-directory configuration
 ---------------------------
 
-Each subdirectory of the project directory can contain the configuration file.
-The format of this file is very simple:
+Each subdirectory of the project directory can contain the configuration file
+named `.pgspa_config`. The format of this file is very simple:
 
     parameter1 = value_without_spaces
     parameter2 = 'value with spaces'
