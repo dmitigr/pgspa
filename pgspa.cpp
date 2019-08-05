@@ -897,11 +897,12 @@ private:
                   e.code() == pgfe::Server_errc::c42_undefined_object ||
                   e.code() == pgfe::Server_errc::c3f_invalid_schema_name ||
                   e.code() == pgfe::Server_errc::c2b_dependent_objects_still_exist) {
-                  conn->perform("rollback to savepoint p1");
                   execution_status = e.error()->to_error(); // error (hope for the next iteration)
+                  conn->perform("rollback to savepoint p1");
+                  ASSERT(execution_status && *execution_status);
                 } else {
-                  report_error(i, j, e.error()->brief(), query_position(e.error()));
-                  throw Handled_exception{};
+                  execution_status = e.error()->to_error(); // fatal error (which will be reported last)
+                  goto finish;
                 }
               }
             } else
@@ -911,6 +912,8 @@ private:
       }
       successes_count += iteration_successes_count;
     } while (iteration_successes_count > 0);
+
+  finish:
 
     /*
      * If there are queries, which was not executed without errors
@@ -923,10 +926,10 @@ private:
         const auto batch_execution_statuses_size = batches_execution_statuses[i].size();
         using Counter = std::remove_const_t<decltype (batch_execution_statuses_size)>;
         for (Counter j = 0; j < batch_execution_statuses_size; ++j) {
-          const auto& execution_status = batches_execution_statuses[i][j];
-          ASSERT(execution_status);
-          if (const std::unique_ptr<pgfe::Error>& e = *execution_status)
-            report_error(i, j, e->brief(), query_position(e.get()));
+          if (const auto& execution_status = batches_execution_statuses[i][j]) {
+            if (const std::unique_ptr<pgfe::Error>& e = *execution_status)
+              report_error(i, j, e->brief(), query_position(e.get()));
+          }
         }
       }
       throw Handled_exception{};
