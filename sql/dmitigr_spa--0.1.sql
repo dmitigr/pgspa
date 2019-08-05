@@ -313,7 +313,7 @@ comment on function spa_existing_schemas(name[], out name) is
 --------------------------------------------------------------------------------
 create or replace function spa_clear_schema(schema_ name,
     object_types_ text[] default array['rules', 'triggers', 'functions',
-      'sequences', 'views', 'domains', 'domain_constraints', 'types'],
+      'sequences', 'views', 'domains', 'domain_constraints', 'types', 'tables'],
     verbose_ boolean default true,
     out deleted_count integer,
     out remains_count integer)
