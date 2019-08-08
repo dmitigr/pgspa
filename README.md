@@ -11,7 +11,7 @@ Pgspa allows to execute a set of SQL queries from files of arbitrary directory
 hierarchy in *one* transaction. The queries of the set are executed iteratively.
 Queries ending with the ignorable errors are not executed in the next iteration,
 while queries ending with the non-fatal errors are executed in the next
-iteration. The execution stops when, there are no successfully executed queries,
+iteration. The execution stops when there are no successfully executed queries,
 or there are at least one query ended with a fatal error during the iteration.
 Finally, if not all the queries of the set considered done, the entire
 transaction is rolled back and Pgspa reports about the problems.
