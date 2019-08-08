@@ -420,8 +420,8 @@ protected:
   static std::string options()
   {
     static std::string result{
-      "  --host=<name> - the host name of the PostgreSQL server (\"localhost\" by default).\n"
-      "  --address=<IP address> - the IP address of the PostgreSQL server (unset by default).\n"
+      "  --host=<name> - the hostname of the PostgreSQL server (\"localhost\" by default).\n"
+      "  --address=<IP address> - the IP address of the PostgreSQL server to connect to (\"127.0.0.1\" by default).\n"
       "  --port=<number> - the port number of the PostgreSQL server to operate (\"5432\" by default).\n"
       "  --user=<name> - the name of the user to operate (current username by default).\n"
       "  --password=<password> - the password (be aware, it may appear in the system logs!)\n"
@@ -450,6 +450,7 @@ protected:
     : data_{Data{}}
   {
     data_->name_ = std::move(name);
+    data_->address_ = "127.0.0.1";
     data_->host_ = "localhost";
     data_->port_ = "5432";
     data_->username_ = os::current_username();
@@ -540,7 +541,7 @@ protected:
     }
   }
 
-  const std::string& host_name() const
+  const std::optional<std::string>& host_name() const
   {
     ASSERT(delegate() || data_);
     if (auto* const d = delegate())
@@ -549,7 +550,7 @@ protected:
       return data_->host_;
   }
 
-  const std::optional<std::string>& host_address() const
+  const std::string& host_address() const
   {
     ASSERT(delegate() || data_);
     if (auto* const d = delegate())
@@ -711,8 +712,8 @@ protected:
 
       if (!conn) {
         conn = pgfe::Connection_options::make()->
-          set_net_hostname(host_name())->
           set_net_address(host_address())->
+          set_net_hostname(host_name())->
           set_port(std::stoi(host_port()))->
           set_database(database())->
           set_username(username())->
@@ -955,8 +956,8 @@ private:
   struct Data {
     std::string name_;
 
-    std::string host_;
-    std::optional<std::string> address_;
+    std::string address_;
+    std::optional<std::string> host_;
     std::string port_;
     std::string database_;
     std::string username_;

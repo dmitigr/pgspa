@@ -2,47 +2,45 @@ The SQL Programming Assistant for PostgreSQL
 ============================================
 
 The SQL Programming Assistant for [PostgreSQL] (hereinafter referred to as
-Pgspa) - is a command line program and the PostgreSQL extension to boost the
-productivity while developing in SQL.
+Pgspa) - is a command line program and the PostgreSQL extension to simplify
+the development of the PostgreSQL databases.
 
-**ATTENTION, this software is "alpha" quality, use at your own risk. Do not
-use with real production databases!**
+**ATTENTION, this software is "alpha" quality, use it at your own risk!**
 
-Usually, to deploy a database the following objects should be created: roles,
-database, sequences, types, domains, functions, tables, triggers, rules, views
-etc. Finally, privileges on these objects should be granted. Pgspa allows to
-execute a set of SQL commands from files of arbitrary directory hierarchy in
-*one* transaction. Thus, it's easy and safe to (re-)deploy the entire database
-from the arbitrary set of SQL source files with Pgspa!
+Pgspa allows to execute a set of SQL queries from files of arbitrary directory
+hierarchy in *one* transaction. The queries of the set are executed iteratively.
+Queries ending with the ignorable errors are not executed in the next iteration,
+while queries ending with the non-fatal errors are executed in the next
+iteration. The execution stops when, there are no successfully executed queries,
+or there are at least one query ended with a fatal error during the iteration.
+Finally, if not all the queries of the set considered done, the entire
+transaction is rolled back and Pgspa reports about the problems.
 
-Next, consider the following example: let's the table `person` depends on the
-function `person_id()`, and the function `person_id()` is depends on the view
-`defaults`. To add a column to the view `defaults`, it must first be dropped.
-But since the function `person_id()` is depends on the view `defaults`, the SQL
-command `DROP VIEW defaults CASCADE` will affects both the function
-`person_id()` and the table `person` (with the data, of course)! To cope with
-this problem, Pgspa provides the PostgreSQL extension which allows to drop
-an any combination of the following types of database objects in a *non-cascade*
-mode:
+Table 1. Ignorable errors (queries ended with these errors are considered done)
 
-  - rules;
-  - triggers;
-  - functions;
-  - views;
-  - tables;
-  - indexes;
-  - domain constraints;
-  - domains;
-  - types.
+|SQLSTATE code|Condition name|
+|:------------|:-------------|
+|42723|duplicate_function|
+|42P06|duplicate_schema|
+|42P07|duplicate_table|
+|42710|duplicate_object|
 
-Summarizing:
+Table 2. Non-fatal errors (queries ended with these errors will be re-executed
+in the next iteration)
 
-  - a client-side program `pgspa` allows to execute the SQL queries from files
-    of arbitrary directory hierarchy in *one* transaction;
-  - a server-side extension `dmitigr_spa` provides the convenient set of
-    functions to drop the interdependent database objects in the *non-cascade*
-    mode;
-  - together, this allows to speed up the database development process.
+|SQLSTATE code|Condition name|
+|:------------|:-------------|
+|2BP01|dependent_objects_still_exist|
+|3F000|invalid_schema_name|
+|42883|undefined_function|
+|42P01|undefined_table|
+|42704|undefined_object|
+
+All other errors are treated as fatal and leads to failure of the entire transaction.
+
+Pgspa also ships with the server-side PostgreSQL extension `dmitigr_spa` which
+provides the convenient set of functions for database developers including
+functions to drop the interdependent database objects in the *non-cascade* mode.
 
 Tutorial
 ========
@@ -170,7 +168,7 @@ variables which can be passed to CMake for customization.
 |CMAKE_BUILD_TYPE|Debug \| Release \| RelWithDebInfo \| MinSizeRel|Debug|Debug|
 |**Installation directories**||||
 |CMAKE_INSTALL_PREFIX|*an absolute path*|"/usr/local"|"%ProgramFiles%\dmitigr_pgspa"|
-|DMITIGR_PGSPA_PGSPA_BIN_INSTALL_DIR|*a path relative to CMAKE_INSTALL_PREFIX*|"bin"|*not set*|
+|DMITIGR_PGSPA_BIN_INSTALL_DIR|*a path relative to CMAKE_INSTALL_PREFIX*|"bin"|*not set*|
 |DMITIGR_PGSPA_PG_SHAREDIR|*an absolute path*|*not set (can be set manually)*|*not set (can be set manually)*|
 
 Installation
