@@ -141,7 +141,11 @@ protected:
    */
   static filesystem::path root_path()
   {
-    return fs::relative_root_path(root_marker);
+    if (auto result = fs::parent_directory_path(root_marker))
+      return *result;
+    else
+      throw std::runtime_error{"no directory \"" + root_marker.string() + "\" found in parent directory hierarchy"};
+
   }
 
   /**
@@ -183,7 +187,7 @@ private:
     } else if (is_regular_file(reference) && reference.extension().empty()) {
       static const auto is_nor_empty_nor_commented = [](const std::string& line) { return (!line.empty() && line.front() != '#'); };
       const auto parent = reference.parent_path();
-      const auto paths = fs::read_lines_to_vector_if(reference, is_nor_empty_nor_commented);
+      const auto paths = fs::file_data_to_strings_if(reference, is_nor_empty_nor_commented);
 
       const auto is_in_trace = [&](const filesystem::path& p)
       {
@@ -605,7 +609,7 @@ protected:
     explicit Sql_batch(const filesystem::path& path)
       : path_{path}
     {
-      vec_ = pgfe::Sql_vector::make(fs::read_to_string(*path_));
+      vec_ = pgfe::Sql_vector::make(fs::file_data_to_string(*path_));
       ASSERT(is_invariant_ok());
     }
 
