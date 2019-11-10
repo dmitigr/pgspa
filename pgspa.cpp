@@ -886,7 +886,8 @@ private:
               try {
                 conn->execute(sql_string);
                 conn->complete();
-                conn->perform("savepoint p1");
+                if (conn->is_transaction_block_uncommitted())
+                  conn->perform("savepoint p1");
                 execution_status = nullptr; // done
                 ++iteration_successes_count;
               } catch (const pgfe::Server_exception& e) {
