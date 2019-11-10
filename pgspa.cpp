@@ -715,7 +715,7 @@ protected:
       auto& conn = data_->conn_;
 
       if (!conn) {
-        conn = pgfe::Connection_options::make()->
+        conn = pgfe::Connection_options::make(pgfe::Communication_mode::net)->
           set_net_address(host_address())->
           set_net_hostname(host_name())->
           set_port(std::stoi(host_port()))->
