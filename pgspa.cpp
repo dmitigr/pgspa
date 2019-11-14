@@ -793,14 +793,22 @@ private:
   /**
    * @brief Prints the Emacs-friendly information about an error to the standard error.
    */
-  static void report_file_error(const filesystem::path& path, const std::size_t lnum, const std::size_t cnum, const std::string& msg)
+  static void report_file_error(const filesystem::path& path,
+    const std::size_t lnum, const std::size_t cnum, const pgfe::Error* const err)
   {
     /*
      * Use GNU style for reporting error messages:
      * foo.sql:3:1:Error: End of file during parsing
      * (See etc/compilation.txt of Emacs installation.)
      */
-    std::cerr << absolute(path).string() << ":" << lnum << ":" << cnum << ":Error: " << msg << "\n";
+    std::cerr << absolute(path).string() << ":" << lnum << ":" << cnum << ":Error: " << err->brief();
+    if (const auto& d = err->detail())
+      std::cerr << ". Detail: " << *d;
+    if (const auto& h = err->hint())
+      std::cerr << ". Hint: " << *h;
+    if (const auto& c = err->context())
+      std::cerr << ". Context: " << *c;
+    std::cerr << "\n";
   }
 
   /**
@@ -835,13 +843,22 @@ private:
       return result;
     }();
 
-    const auto report_error = [&batches](const std::size_t i, const std::size_t j, const std::string& msg,
-      const std::optional<std::size_t> query_offset = {})
+    const auto query_position = [](const pgfe::Error* const e)
+    {
+      std::optional<std::size_t> result;
+      if (const auto qp = e->query_position())
+        result = std::stoul(*qp);
+      return result;
+    };
+
+    const auto report_error = [&batches, &query_position](const std::size_t i, const std::size_t j, const pgfe::Error* const err)
     {
       ASSERT(i < batches.size());
       const auto* const sql_vector = batches[i].sql_vector();
       ASSERT(j < sql_vector->sql_string_count());
       ASSERT(!sql_vector->sql_string(j)->is_query_empty());
+      ASSERT(err);
+      const auto query_offset = query_position(err);
       if (const auto& path = batches[i].path()) {
         const auto content = sql_vector->to_string();
         const auto ssp = sql_query_string_position(sql_vector, j);
@@ -849,22 +866,14 @@ private:
           ssp + *query_offset :
           ssp + string::position_of_non_space(sql_vector->sql_string(j)->to_query_string(), 0);
         const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos - 1);
-        report_file_error(*path, lnum + 1, cnum + 1, msg);
+        report_file_error(*path, lnum + 1, cnum + 1, err);
       } else {
         const auto content = sql_vector->sql_string(j)->to_string();
         const auto qpos = query_offset.value_or(0);
         const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos - 1);
-        std::cerr << "pgspa internal query (see below):" << lnum + 1 << ":" << cnum + 1 << ":Error: " << msg << ":\n"
+        std::cerr << "pgspa internal query (see below):" << lnum + 1 << ":" << cnum + 1 << ":Error: " << err->brief() << ":\n"
           << content << "\n";
       }
-    };
-
-    const auto query_position = [](const pgfe::Error* const e)
-    {
-      std::optional<std::size_t> result;
-      if (const auto qp = e->query_position())
-        result = std::stoul(*qp);
-      return result;
     };
 
     conn->perform("savepoint p1");
@@ -886,18 +895,18 @@ private:
               try {
                 conn->execute(sql_string);
                 conn->complete();
-                if (conn->is_transaction_block_uncommitted())
-                  conn->perform("savepoint p1");
                 execution_status = nullptr; // done
                 ++iteration_successes_count;
+                if (conn->is_transaction_block_uncommitted())
+                  conn->perform("savepoint p1");
               } catch (const pgfe::Server_exception& e) {
                 if (e.code() == pgfe::Server_errc::c42_duplicate_table ||
                   e.code() == pgfe::Server_errc::c42_duplicate_function ||
                   e.code() == pgfe::Server_errc::c42_duplicate_object ||
                   e.code() == pgfe::Server_errc::c42_duplicate_schema) {
-                  conn->perform("rollback to savepoint p1");
                   execution_status = nullptr; // done
                   ++iteration_successes_count;
+                  conn->perform("rollback to savepoint p1");
                 } else if (e.code() == pgfe::Server_errc::c42_undefined_table ||
                   e.code() == pgfe::Server_errc::c42_undefined_function ||
                   e.code() == pgfe::Server_errc::c42_undefined_object ||
@@ -934,7 +943,7 @@ private:
         for (Counter j = 0; j < batch_execution_statuses_size; ++j) {
           if (const auto& execution_status = batches_execution_statuses[i][j]) {
             if (const std::unique_ptr<pgfe::Error>& e = *execution_status)
-              report_error(i, j, e->brief(), query_position(e.get()));
+              report_error(i, j, e.get());
           }
         }
       }
