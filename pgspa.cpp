@@ -803,11 +803,11 @@ private:
      */
     std::cerr << absolute(path).string() << ":" << lnum << ":" << cnum << ":Error: " << err->brief();
     if (const auto& d = err->detail())
-      std::cerr << ". Detail: " << *d;
+      std::cerr << "\n Detail: " << *d;
     if (const auto& h = err->hint())
-      std::cerr << ". Hint: " << *h;
+      std::cerr << "\n Hint: " << *h;
     if (const auto& c = err->context())
-      std::cerr << ". Context: " << *c;
+      std::cerr << "\n Context: " << *c;
     std::cerr << "\n";
   }
 
@@ -897,8 +897,7 @@ private:
                 conn->complete();
                 execution_status = nullptr; // done
                 ++iteration_successes_count;
-                if (conn->is_transaction_block_uncommitted())
-                  conn->perform("savepoint p1");
+                conn->perform("savepoint p1");
               } catch (const pgfe::Server_exception& e) {
                 if (e.code() == pgfe::Server_errc::c42_duplicate_table ||
                   e.code() == pgfe::Server_errc::c42_duplicate_function ||
