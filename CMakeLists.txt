@@ -46,14 +46,19 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ------------------------------------------------------------------------------
 
-find_package(dmitigr_cefeika)
+set(suff "")
+if (DMITIGR_CEFEIKA_HEADER_ONLY)
+  set(suff "_interface")
+endif()
+
+find_package(dmitigr_cefeika REQUIRED COMPONENTS app base cfg fs os pgfe${suff} str)
 
 # ------------------------------------------------------------------------------
 
 add_executable(pgspa pgspa.cpp)
 dmitigr_target_compile_options(pgspa)
-target_link_libraries(pgspa PRIVATE
-  dmitigr::app dmitigr::base dmitigr::cfg dmitigr::fs dmitigr::os dmitigr::pgfe dmitigr::str)
+target_link_libraries(pgspa PRIVATE dmitigr::app dmitigr::base
+  dmitigr::cfg dmitigr::fs dmitigr::os dmitigr::pgfe dmitigr::str)
 if (WIN32)
   target_link_libraries(pgspa PRIVATE Advapi32.lib)
 endif()

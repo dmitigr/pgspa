@@ -313,14 +313,16 @@ class Handled_exception final {};
 /// @brief A pgspa command.
 class Command {
 public:
+  template<typename ... Types>
+  static std::unique_ptr<Command> make(const std::string_view name, Types&& ... params);
+
   /// @returns A new instance from the textual type identifier.
   static std::unique_ptr<Command> make(const app::Program_parameters& params);
 
   /// @returns The string with the options specific to this command.
   static std::string options()
   {
-    static std::string result{
-      "  --help - print the usage info and exit. (Cancels effect of all other arguments.)"};
+    static std::string result;
     return result;
   }
 
@@ -342,27 +344,25 @@ public:
   /**
    * @brief Runs the current command.
    *
-   * If the "--help" option was specified, this functions just prints the
-   * usage info to the standard output.
-   *
    * @see run().
    */
   void go()
   {
-    if (help_)
-      std::cout << usage() << "\n";
-    else
-      run();
+    run();
   }
 
 protected:
   /// @brief The default constructor. (Used for delegates.)
   Command() = default;
 
+  /// @brief The constructor. (Used for help.)
+  explicit Command(std::string name)
+    : name_{std::move(name)}
+  {}
+
   /// @brief The constructor.
   explicit Command(const app::Program_parameters& params)
     : name_{params.command_name().value()}
-    , help_{static_cast<bool>(params.option("help"))}
   {}
 
   /// @returns `true` if the invariant is okay, or `false` otherwise.
@@ -392,7 +392,6 @@ private:
   virtual void run() = 0;
 
   std::string name_;
-  bool help_{};
 };
 
 // =============================================================================
@@ -400,12 +399,18 @@ private:
 /// @brief The "help" command.
 class Help final : public Command {
 public:
+  Help()
+    : Command("help")
+  {}
+
   explicit Help(const app::Program_parameters& params)
     : Command{params}
   {
-    check_options(params, {"help"});
-    if (params.command_name() != "help")
-      command_ = make(params);
+    const auto& args = params.arguments();
+    if (args.size() != 1)
+      usage_ = usage();
+    else
+      usage_ = make(args.back())->usage();
   }
 
   std::string usage() const override
@@ -417,14 +422,11 @@ public:
   }
 
 private:
-  std::unique_ptr<Command> command_;
+  std::string usage_;
 
   void run() override
   {
-    if (!command_)
-      std::cout << dmitigr::pgspa::usage() << "\n";
-    else
-      command_->go();
+    std::cout << usage_ << "\n";
   }
 };
 
@@ -433,11 +435,13 @@ private:
 /// @brief The "version" command.
 class Version final : public Command {
 public:
+  Version()
+    : Command("version")
+  {}
+
   explicit Version(const app::Program_parameters& params)
     : Command{params}
-  {
-    check_options(params, {"help"});
-  }
+  {}
 
 private:
   void run() override
@@ -453,11 +457,13 @@ private:
 /// @brief The "init" command.
 class Init final : public Command {
 public:
+  Init()
+    : Command("init")
+  {}
+
   explicit Init(const app::Program_parameters& params)
     : Command{params}
-  {
-    check_options(params, {"help"});
-  }
+  {}
 
 private:
   void run() override
@@ -503,6 +509,10 @@ protected:
     static std::string result{Command::options().append("\n").append(options())};
     return result;
   }
+
+  Online(std::string name)
+    : Command{std::move(name)}
+  {}
 
   explicit Online(Online* const delegate)
     : delegate_{delegate}
@@ -739,6 +749,10 @@ public:
     return result;
   }
 
+  Exec()
+    : Online{"exec"}
+  {}
+
   explicit Exec(Online* const delegate)
     : Online{delegate}
   {
@@ -749,8 +763,8 @@ public:
     : Online{params}
     , args_{params.arguments()}
   {
-    check_options(params, {"help", "host", "address", "port", "database",
-                           "user", "password", "client_encoding", "connect_timeout"});
+    check_options(params, {"host", "address", "port", "database", "username",
+                           "password", "client_encoding", "connect_timeout"});
 
     if (args_.empty())
       throw std::runtime_error("no references specified");
@@ -962,20 +976,28 @@ private:
 
 // =============================================================================
 
+template<typename ... Types>
+std::unique_ptr<Command> Command::make(const std::string_view name, Types&& ... params)
+{
+  if (name == "help")
+    return std::make_unique<Help>(std::forward<Types>(params)...);
+  else if (name == "version")
+    return std::make_unique<Version>(std::forward<Types>(params)...);
+  else if (name == "init")
+    return std::make_unique<Init>(std::forward<Types>(params)...);
+  else if (name == "exec")
+    return std::make_unique<Exec>(std::forward<Types>(params)...);
+  else
+    throw std::logic_error{"unknown command \"" + std::string{name} + "\""};
+}
+
 std::unique_ptr<Command> Command::make(const app::Program_parameters& params)
 {
-  if (const auto& cmd = params.command_name(); !cmd)
-    throw std::runtime_error{"no command specified"};
-  else if (cmd == "help")
-    return std::make_unique<Help>(params);
-  else if (cmd == "version")
-    return std::make_unique<Version>(params);
-  else if (cmd == "init")
-    return std::make_unique<Init>(params);
-  else if (cmd == "exec")
-    return std::make_unique<Exec>(params);
+  DMITIGR_ASSERT(params.is_valid());
+  if (const auto& cmd = params.command_name(); cmd)
+    return make(*cmd, params);
   else
-    throw std::logic_error{"invalid command \"" + *cmd + "\""};
+    throw std::runtime_error{"no command specified"};
 }
 
 } // namespace dmitigr:pgspa
