@@ -46,13 +46,14 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ------------------------------------------------------------------------------
 
-find_package(dmitigr_cefeika REQUIRED COMPONENTS util pgfe)
+find_package(dmitigr_cefeika)
 
 # ------------------------------------------------------------------------------
 
 add_executable(pgspa pgspa.cpp)
 dmitigr_target_compile_options(pgspa)
-target_link_libraries(pgspa PRIVATE dmitigr::util dmitigr::pgfe)
+target_link_libraries(pgspa PRIVATE
+  dmitigr::app dmitigr::base dmitigr::cfg dmitigr::fs dmitigr::os dmitigr::pgfe dmitigr::str)
 if (WIN32)
   target_link_libraries(pgspa PRIVATE Advapi32.lib)
 endif()
@@ -64,7 +65,7 @@ install(TARGETS pgspa
 
 if (NOT ("${DMITIGR_PGSPA_PG_SHAREDIR}" STREQUAL ""))
   install(FILES
-    sql/dmitigr_spa--0.1.sql
+    sql/dmitigr_spa--0.2.sql
     sql/dmitigr_spa.control
 
     DESTINATION "${DMITIGR_PGSPA_PG_SHAREDIR}/extension")

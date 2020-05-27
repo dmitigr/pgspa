@@ -6,14 +6,13 @@
 #define NOMINMAX
 #endif
 
-#include <dmitigr/util/console.hpp>
-#include <dmitigr/util/debug.hpp>
-#include <dmitigr/util/config.hpp>
-#include <dmitigr/util/os.hpp>
-#include <dmitigr/util/filesystem.hpp>
-#include <dmitigr/util/string.hpp>
-
+#include <dmitigr/app.hpp>
+#include <dmitigr/base.hpp>
+#include <dmitigr/cfg.hpp>
+#include <dmitigr/fs.hpp>
+#include <dmitigr/os.hpp>
 #include <dmitigr/pgfe.hpp>
+#include <dmitigr/str.hpp>
 
 #include <algorithm>
 #include <iostream>
@@ -30,13 +29,8 @@ namespace dmitigr::pgspa {
 
 namespace filesystem = std::filesystem;
 
-const filesystem::path root_marker{".pgspa"};
-const filesystem::path per_directory_config{".pgspa_config"};
-
-/**
- * @returns The general usage info.
- */
-std::string usage()
+/// @returns The general usage info.
+inline std::string usage()
 {
   return std::string("pgspa - The SQL Programming Assistant for PostgreSQL\n\n")
     .append("Usage: pgspa <command>\n\n")
@@ -48,128 +42,30 @@ std::string usage()
     .append("  exec");
 }
 
-/**
- * @brief A dummy exception to throw after handling of a real exception.
- *
- * @remarks The exception handlers of this type shouldn't have side effects.
- */
-class Handled_exception{};
+const filesystem::path root_marker{".pgspa"};
+const filesystem::path per_directory_config{".pgspa_config"};
 
-/**
- * @brief A command of pgspa utility.
- */
-class Command : public console::Command {
-public:
-  /**
-   * @returns A new instance from the textual type identifier.
-   */
-  template<typename ... Types>
-  static std::unique_ptr<Command> make(const std::string& cmd, Types&& ... opts);
-
-  /**
-   * @brief Runs the current command.
-   *
-   * If the "--help" option was specified, this functions just prints the
-   * usage info to the standard output.
-   */
-  void go()
-  {
-    if (is_help_requested())
-      std::cout << usage() << "\n";
-    else
-      run();
-  }
-
-protected:
-  /**
-   * @returns The string with the options specific to this command.
-   */
-  static std::string options()
-  {
-    static std::string result{
-      "  --help - print the usage info and exit. (Cancels effect of all other arguments.)"};
-    return result;
-  }
-
-  Command() = default;
-
-  /**
-   * @brief Sets the values of the options specific to this command.
-   */
-  void parse_option(const std::string& option)
-  {
-    ASSERT(option.find("--") == 0);
-    if (option == "--help")
-      help_ = true;
-    else
-      throw_invalid_usage("invalid option \"" + option + "\"");
-  };
-
-  // ===========================================================================
-
-  /**
-   * @returns `true` if "--help" option was specified, or `false` otherwise.
-   */
-  bool is_help_requested() const
-  {
-    return help_;
-  }
-
-  /**
-   * @returns The general usage info of this command.
-   */
-  std::string usage() const override
-  {
-    return std::string{}
-      .append("Usage: pgspa " + name() + "\n\n")
-      .append("Options:\n")
-      .append(options());
-  }
-
-  /**
-   * @returns `true` if the invariant is okay, or `false` otherwise.
-   */
-  bool is_invariant_ok() const
-  {
-    return true;
-  }
-
-  // ===========================================================================
-
-  /**
-   * @returns The root path of the project.
-   */
+/// @brief Utility functions.
+struct Util final {
+  /// @returns The root path of the project.
   static filesystem::path root_path()
   {
     if (auto result = fs::parent_directory_path(root_marker))
       return *result;
     else
-      throw std::runtime_error{"no directory \"" + root_marker.string() + "\" found in parent directory hierarchy"};
-
+      throw std::runtime_error{"no directory \"" + root_marker.string() +
+          "\" found in parent directory hierarchy"};
   }
 
-  /**
-   * @returns The vector of paths to SQL files of the specified `ref`.
-   */
+  /// @returns The vector of paths to SQL files of the specified `ref`.
   static std::vector<filesystem::path> sql_paths(const filesystem::path& ref)
   {
     return sql_paths(ref, {ref});
   }
 
-private:
-  /**
-   * @brief Runs the current command.
-   *
-   * @remarks The API function `go()` calls this function.
-   *
-   * @see go().
-   */
-  virtual void run() override = 0;
-
-  /**
-   * @returns The vector of paths to SQL files by the specified `reference`.
-   */
-  static std::vector<filesystem::path> sql_paths(const filesystem::path& reference, std::vector<filesystem::path> trace)
+  /// @returns The vector of paths to SQL files by the specified `reference`.
+  static std::vector<filesystem::path> sql_paths(const filesystem::path& reference,
+    std::vector<filesystem::path> trace)
   {
     std::vector<filesystem::path> result;
 
@@ -185,11 +81,14 @@ private:
     if (is_regular_file(reference) && reference.extension() == ".sql") {
       result.push_back(reference);
     } else if (is_regular_file(reference) && reference.extension().empty()) {
-      static const auto is_nor_empty_nor_commented = [](const std::string& line) { return (!line.empty() && line.front() != '#'); };
+      static const auto is_nor_empty_nor_commented = [](const std::string& line)
+      {
+        return (!line.empty() && line.front() != '#');
+      };
       const auto parent = reference.parent_path();
-      const auto paths = fs::file_data_to_strings_if(reference, is_nor_empty_nor_commented);
+      const auto paths = str::file_to_strings_if(reference, is_nor_empty_nor_commented);
 
-      const auto is_in_trace = [&](const filesystem::path& p)
+      const auto is_in_trace = [&trace](const filesystem::path& p)
       {
         const auto b = cbegin(trace), e = cend(trace);
         return std::find(b, e, p) != e;
@@ -211,16 +110,16 @@ private:
       }
     } else if (is_directory(reference)) {
       if (const auto config = reference / per_directory_config; is_regular_file(config)) {
-        if (auto params = parsed_config(config); params->boolean_parameter("explicit").value_or(false)) {
+        if (auto params = parsed_config(config); params.boolean_parameter("explicit").value_or(false)) {
           throw std::runtime_error{"the references of the directory \"" + reference.string() +
-            "\" are allowed to be used only explicitly"};
+              "\" are allowed to be used only explicitly"};
         }
       }
 
       if (auto heading_file = sql_file_path(reference); is_regular_file(heading_file))
         result.emplace_back(std::move(heading_file));
 
-      const auto refs_of_dir = [&reference]()
+      const auto refs_of_dir = [&reference]
       {
         auto result = refs_of_directory(reference);
         std::sort(begin(result), end(result));
@@ -245,27 +144,26 @@ private:
     return result;
   }
 
-  /**
-   * @brief Appends the `appendix` to the `result`.
-   */
-  static void push_back(std::vector<filesystem::path>& result, std::vector<filesystem::path>&& appendix)
+  /// @brief Appends the `appendix` to the `result`.
+  static void push_back(std::vector<filesystem::path>& result,
+    std::vector<filesystem::path>&& appendix)
   {
-    result.insert(cend(result), std::move_iterator(begin(appendix)), std::move_iterator(end(appendix)));
+    result.insert(cend(result), std::move_iterator(begin(appendix)),
+      std::move_iterator(end(appendix)));
   }
 
-  /**
-   * @brief Appends `path` to `result` if it's not already there.
-   */
-  static void push_back_if_not_exists(std::vector<filesystem::path>& result, filesystem::path path)
+  /// @brief Appends `path` to `result` if it's not already there.
+  static void push_back_if_not_exists(std::vector<filesystem::path>& result,
+    filesystem::path path)
   {
-    if (std::none_of(cbegin(result), cend(result), [&](const auto& elem) { return elem == path; }))
+    if (std::none_of(cbegin(result), cend(result),
+        [&](const auto& elem) { return elem == path; }))
       result.push_back(std::move(path));
   }
 
-  /**
-   * @brief Appends `e` to `result` if `e` represents the SQL file or the directory.
-   */
-  static void push_back_if_sql_file_or_directory(std::vector<filesystem::path>& result, const filesystem::directory_entry& e)
+  /// @brief Appends `e` to `result` if `e` represents the SQL file or the directory.
+  static void push_back_if_sql_file_or_directory(std::vector<filesystem::path>& result,
+    const filesystem::directory_entry& e)
   {
     const auto& path = e.path();
     if (is_regular_file(path) && path.extension() == ".sql")
@@ -274,9 +172,7 @@ private:
       push_back_if_not_exists(result, path.filename());
   }
 
-  /**
-   * @returns The vector of database object names from the specified `path`.
-   */
+  /// @returns The vector of database object names from the specified `path`.
   static std::vector<filesystem::path> refs_of_directory(const filesystem::path& path)
   {
     if (!is_directory(path))
@@ -287,40 +183,229 @@ private:
     return result;
   }
 
-  /**
-   * @returns The per-directory configuration.
-   */
-  static std::unique_ptr<config::Flat> parsed_config(const filesystem::path& path)
+  /// @returns The per-directory configuration.
+  static cfg::Flat parsed_config(const filesystem::path& path)
   {
-    auto result = config::Flat::make(path);
-    for (const auto& pair : result->parameters()) {
+    cfg::Flat result{path};
+    for (const auto& pair : result.parameters()) {
       if (pair.first != "explicit")
-        throw std::logic_error{"unknown parameter \"" + pair.first + "\" specified in \"" + path.string() + "\""};
+        throw std::logic_error{"unknown parameter \"" + pair.first +
+            "\" specified in \"" + path.string() + "\""};
     }
     return result;
   }
+};
 
+// ===========================================================================
+
+/// @brief A batch of SQL commands of a file.
+class Sql_batch final {
+public:
+  explicit Sql_batch(const filesystem::path& path)
+    : path_{path}
+  {
+    vec_ = pgfe::Sql_vector::make(str::file_to_string(*path_));
+    ASSERT(is_invariant_ok());
+  }
+
+  explicit Sql_batch(std::unique_ptr<pgfe::Sql_vector>&& vec)
+    : vec_{std::move(vec)}
+  {
+    ASSERT(is_invariant_ok());
+  }
+
+  /// @returns The vector of SQL batches from the vector of file paths.
+  static std::vector<Sql_batch> make_many(const std::vector<filesystem::path>& paths)
+  {
+    std::vector<Sql_batch> result;
+    result.reserve(paths.size());
+    for (const auto& path : paths)
+      result.emplace_back(path);
+    return result;
+  }
+
+  const std::optional<filesystem::path>& path() const
+  {
+    return path_;
+  }
+
+  pgfe::Sql_vector* sql_vector()
+  {
+    return const_cast<pgfe::Sql_vector*>(static_cast<const Sql_batch*>(this)->sql_vector());
+  }
+
+  const pgfe::Sql_vector* sql_vector() const
+  {
+    return vec_.get();
+  }
+
+private:
+  bool is_invariant_ok() const
+  {
+    const bool vec_ok = bool(vec_);
+    return vec_ok;
+  }
+
+  std::unique_ptr<pgfe::Sql_vector> vec_;
+  std::optional<filesystem::path> path_;
+};
+
+// ===========================================================================
+
+/// @brief A transaction guard.
+class Tx_guard final {
+public:
+  Tx_guard(const Tx_guard&) = delete;
+  Tx_guard& operator=(const Tx_guard&) = delete;
+  Tx_guard(Tx_guard&&) = delete;
+  Tx_guard& operator=(Tx_guard&&) = delete;
+
+  static void begin(pgfe::Connection* const conn)
+  {
+    ASSERT(conn);
+    if (!conn->is_transaction_block_uncommitted())
+      conn->perform("begin");
+  }
+
+  static void commit(pgfe::Connection* const conn)
+  {
+    ASSERT(conn);
+    if (conn->is_transaction_block_uncommitted())
+      conn->perform("commit");
+  }
+
+  static void rollback(pgfe::Connection* const conn)
+  {
+    ASSERT(conn);
+    if (conn->is_transaction_block_uncommitted())
+      conn->perform("rollback");
+  }
+
+  ~Tx_guard()
+  {
+    // No care about exceptions here: let it crash.
+    rollback(conn_);
+  }
+
+  Tx_guard(pgfe::Connection* const conn)
+    : conn_{conn}
+  {
+    ASSERT(conn_);
+    begin(conn_);
+  }
+
+  void commit()
+  {
+    commit(conn_);
+  }
+
+private:
+  pgfe::Connection* conn_;
+};
+
+/**
+ * @brief A dummy exception to throw after handling of a real exception.
+ *
+ * @remarks The exception handlers of this type shouldn't have side effects.
+ */
+class Handled_exception final {};
+
+/// @brief A pgspa command.
+class Command {
+public:
+  /// @returns A new instance from the textual type identifier.
+  static std::unique_ptr<Command> make(const app::Program_parameters& params);
+
+  /// @returns The string with the options specific to this command.
+  static std::string options()
+  {
+    static std::string result{
+      "  --help - print the usage info and exit. (Cancels effect of all other arguments.)"};
+    return result;
+  }
+
+  /// @returns The name of the command.
+  virtual const std::string& name() const
+  {
+    return name_;
+  }
+
+  /// @returns The general usage info of this command.
+  virtual std::string usage() const
+  {
+    return std::string{}
+      .append("Usage: pgspa " + name() + "\n\n")
+      .append("Options:\n")
+      .append(options());
+  }
+
+  /**
+   * @brief Runs the current command.
+   *
+   * If the "--help" option was specified, this functions just prints the
+   * usage info to the standard output.
+   *
+   * @see run().
+   */
+  void go()
+  {
+    if (help_)
+      std::cout << usage() << "\n";
+    else
+      run();
+  }
+
+protected:
+  /// @brief The default constructor. (Used for delegates.)
+  Command() = default;
+
+  /// @brief The constructor.
+  explicit Command(const app::Program_parameters& params)
+    : name_{params.command_name().value()}
+    , help_{static_cast<bool>(params.option("help"))}
+  {}
+
+  /// @returns `true` if the invariant is okay, or `false` otherwise.
+  virtual bool is_invariant_ok() const
+  {
+    return !name_.empty();
+  }
+
+  /**
+   * @brief Throws `std::runtime_error` if there are an option in `params`
+   * which is not in `opts`.
+   */
+  void check_options(const app::Program_parameters& params, const std::vector<std::string>& opts)
+  {
+    if (const auto i = params.option_other_than(opts); i != cend(params.options()))
+      throw std::runtime_error{"invalid option " + i->first};
+  }
+
+private:
+  /**
+   * @brief Runs the current command.
+   *
+   * @remarks The API function `go()` calls this function.
+   *
+   * @see go().
+   */
+  virtual void run() = 0;
+
+  std::string name_;
   bool help_{};
 };
 
 // =============================================================================
 
-/**
- * @brief The "help" command.
- */
+/// @brief The "help" command.
 class Help final : public Command {
 public:
-  explicit Help(const std::vector<std::string>& opts)
+  explicit Help(const app::Program_parameters& params)
+    : Command{params}
   {
-    const auto parse_option = [this](const std::string& o) { Command::parse_option(o); };
-    auto i = parse_options(cbegin(opts), cend(opts), parse_option);
-    if (i != cend(opts)) {
-      if (*i != "help")
-        command_ = make(*i, std::vector<std::string>{"--help"});
-
-      if (++i != cend(opts))
-        throw_invalid_usage("only one command can be specified");
-    }
+    check_options(params, {"help"});
+    if (params.command_name() != "help")
+      command_ = make(params);
   }
 
   std::string usage() const override
@@ -331,10 +416,8 @@ public:
       .append(Command::options());
   }
 
-  std::string name() const override
-  {
-    return "help";
-  }
+private:
+  std::unique_ptr<Command> command_;
 
   void run() override
   {
@@ -343,31 +426,20 @@ public:
     else
       command_->go();
   }
-
-private:
-  std::unique_ptr<Command> command_;
 };
 
 // =============================================================================
 
-/**
- * @brief The "version" command.
- */
+/// @brief The "version" command.
 class Version final : public Command {
 public:
-  explicit Version(const std::vector<std::string>& opts)
+  explicit Version(const app::Program_parameters& params)
+    : Command{params}
   {
-    const auto parse_option = [this](const std::string& o) { Command::parse_option(o); };
-    const auto i = parse_options(cbegin(opts), cend(opts), parse_option);
-    if (i != cend(opts))
-      throw_invalid_usage();
+    check_options(params, {"help"});
   }
 
-  std::string name() const override
-  {
-    return "version";
-  }
-
+private:
   void run() override
   {
     constexpr int major_version = PGSPA_VERSION_MAJOR;
@@ -378,24 +450,16 @@ public:
 
 // =============================================================================
 
-/**
- * @brief The "init" command.
- */
+/// @brief The "init" command.
 class Init final : public Command {
 public:
-  explicit Init(const std::vector<std::string>& opts)
+  explicit Init(const app::Program_parameters& params)
+    : Command{params}
   {
-    const auto parse_option = [this](const std::string& o) { return Command::parse_option(o); };
-    const auto i = parse_options(cbegin(opts), cend(opts), parse_option);
-    if (i != cend(opts))
-      throw_invalid_usage();
+    check_options(params, {"help"});
   }
 
-  std::string name() const override
-  {
-    return "init";
-  }
-
+private:
   void run() override
   {
     const auto p = filesystem::perms::owner_all |
@@ -418,16 +482,14 @@ namespace detail {
  */
 class Online : public Command {
 protected:
-  /**
-   * @returns The string with the options specific to this command.
-   */
+  /// @returns The string with the options specific to this command.
   static std::string options()
   {
     static std::string result{
       "  --host=<name> - the hostname of the PostgreSQL server (\"localhost\" by default).\n"
       "  --address=<IP address> - the IP address of the PostgreSQL server to connect to (\"127.0.0.1\" by default).\n"
       "  --port=<number> - the port number of the PostgreSQL server to operate (\"5432\" by default).\n"
-      "  --user=<name> - the name of the user to operate (current username by default).\n"
+      "  --username=<name> - the name of the user to operate (current username by default).\n"
       "  --password=<password> - the password (be aware, it may appear in the system logs!)\n"
       "  --database=<name> - the name of the database to operate (value of --user by default).\n"
       "  --client_encoding=<name> - the name of the client encoding to operate.\n"
@@ -435,9 +497,7 @@ protected:
     return result;
   }
 
-  /**
-   * @returns The string with the all options of this command.
-   */
+  /// @returns The string with the all options of this command.
   static std::string all_options()
   {
     static std::string result{Command::options().append("\n").append(options())};
@@ -450,60 +510,59 @@ protected:
     ASSERT(is_invariant_ok());
   }
 
-  explicit Online(std::string name)
-    : data_{Data{}}
+  explicit Online(const app::Program_parameters& params)
+    : Command(params)
   {
-    data_->name_ = std::move(name);
-    data_->address_ = "127.0.0.1";
-    data_->host_ = "localhost";
-    data_->port_ = "5432";
-    data_->username_ = os::current_username();
-    data_->connect_timeout_ = std::chrono::seconds{8};
+    if (const auto& o = params.option_with_argument("host"))
+      data_->host_ = *o;
+    else
+      data_->host_ = "localhost";
+
+    if (const auto& o = params.option_with_argument("address"))
+      data_->address_ = *o;
+    else
+      data_->address_ = "127.0.0.1";
+
+    if (const auto& o = params.option_with_argument("port"))
+      data_->port_ = *o;
+    else
+      data_->port_ = "5432";
+
+    if (const auto& o = params.option_with_argument("username"))
+      data_->username_ = *o;
+    else
+      data_->username_ = os::env::current_username();
+
+    if (const auto& o = params.option_with_argument("database"))
+      data_->database_ = *o;
+    else
+      data_->database_ = data_->username_;
+
+    if (const auto& o = params.option_with_argument("password"))
+      data_->password_ = *o;
+
+    if (const auto& o = params.option_with_argument("client_encoding"))
+      data_->client_encoding_ = *o;
+
+    if (const auto& o = params.option_with_argument("connect_timeout"))
+      data_->connect_timeout_ = std::chrono::seconds{std::stoul(*o)};
+    else
+      data_->connect_timeout_ = std::chrono::seconds{8};
+
     ASSERT(is_invariant_ok());
   }
 
-  /**
-   * @brief Parses the options specific to this command.
-   */
-  void parse_option(const std::string& option)
-  {
-    ASSERT(delegate() || data_);
-    if (auto* const d = delegate()) {
-      d->parse_option(option);
-    } else {
-      if (option.find("--host") == 0)
-        data_->host_ = option_argument(option).value();
-      else if (option.find("--address") == 0)
-        data_->address_ = option_argument(option).value();
-      else if (option.find("--port") == 0)
-        data_->port_ = option_argument(option).value();
-      else if (option.find("--database") == 0)
-        data_->database_ = option_argument(option).value();
-      else if (option.find("--user") == 0)
-        data_->username_ = option_argument(option).value();
-      else if (option.find("--password") == 0)
-        data_->password_ = option_argument(option).value();
-      else if (option.find("--client_encoding") == 0)
-        data_->encoding_ = option_argument(option).value();
-      else if (option.find("--connect_timeout") == 0)
-        data_->connect_timeout_ = std::chrono::seconds{std::stoul(option_argument(option).value())};
-      else
-        Command::parse_option(option);
-    }
-    ASSERT(is_invariant_ok());
-  };
-
-  // ===========================================================================
-
-  std::string name() const override final
+  /// @see Command::name().
+  const std::string& name() const override
   {
     ASSERT(delegate() || data_);
     if (auto* const d = delegate())
       return d->name();
     else
-      return data_->name_;
+      return Command::name();
   }
 
+  /// @see Command::usage().
   std::string usage() const override
   {
     return std::string()
@@ -525,9 +584,7 @@ protected:
     return const_cast<Online*>(static_cast<const Online*>(this)->delegate());
   }
 
-  /**
-   * @overload
-   */
+  /// @overload
   const Online* delegate() const
   {
     return delegate_;
@@ -599,112 +656,7 @@ protected:
       return data_->connect_timeout_;
   }
 
-  // ===========================================================================
-
-  /**
-   * @brief A batch of SQL commands of a file.
-   */
-  class Sql_batch final {
-  public:
-    explicit Sql_batch(const filesystem::path& path)
-      : path_{path}
-    {
-      vec_ = pgfe::Sql_vector::make(fs::file_data_to_string(*path_));
-      ASSERT(is_invariant_ok());
-    }
-
-    explicit Sql_batch(std::unique_ptr<pgfe::Sql_vector>&& vec)
-      : vec_{std::move(vec)}
-    {
-      ASSERT(is_invariant_ok());
-    }
-
-    const std::optional<filesystem::path>& path() const
-    {
-      return path_;
-    }
-
-    pgfe::Sql_vector* sql_vector()
-    {
-      return const_cast<pgfe::Sql_vector*>(static_cast<const Sql_batch*>(this)->sql_vector());
-    }
-
-    const pgfe::Sql_vector* sql_vector() const
-    {
-      return vec_.get();
-    }
-
-  private:
-    bool is_invariant_ok() const
-    {
-      const bool vec_ok = bool(vec_);
-      return vec_ok;
-    }
-
-    std::unique_ptr<pgfe::Sql_vector> vec_;
-    std::optional<filesystem::path> path_;
-  };
-
-  /**
-   * @brief A transaction guard.
-   */
-  class Tx_guard final {
-  public:
-    Tx_guard(const Tx_guard&) = delete;
-    Tx_guard& operator=(const Tx_guard&) = delete;
-    Tx_guard(Tx_guard&&) = delete;
-    Tx_guard& operator=(Tx_guard&&) = delete;
-
-    static void begin(pgfe::Connection* const conn)
-    {
-      ASSERT(conn);
-      if (!conn->is_transaction_block_uncommitted())
-        conn->perform("begin");
-    }
-
-    static void commit(pgfe::Connection* const conn)
-    {
-      ASSERT(conn);
-      if (conn->is_transaction_block_uncommitted())
-        conn->perform("commit");
-    }
-
-    static void rollback(pgfe::Connection* const conn)
-    {
-      ASSERT(conn);
-      if (conn->is_transaction_block_uncommitted())
-        conn->perform("rollback");
-    }
-
-    // =========================================================================
-
-    ~Tx_guard()
-    {
-      // No care about exceptions here: let it crash.
-      rollback(conn_);
-    }
-
-    Tx_guard(pgfe::Connection* const conn)
-      : conn_{conn}
-    {
-      ASSERT(conn_);
-      begin(conn_);
-    }
-
-    void commit()
-    {
-      commit(conn_);
-    }
-
-  private:
-    pgfe::Connection* conn_;
-  };
-
-  // ===========================================================================
-
-  /**
-   * @returns The opened connection to the PostgreSQL server.
-   */
+  /// @returns The opened connection to the PostgreSQL server.
   pgfe::Connection* conn()
   {
     ASSERT(delegate() || data_);
@@ -727,94 +679,127 @@ protected:
 
       if (!conn->is_connected()) {
         conn->connect(data_->connect_timeout_);
-        if (!data_->encoding_.empty())
-          conn->perform("set client_encoding to " + conn->to_quoted_identifier(data_->encoding_));
+        if (!data_->client_encoding_.empty())
+          conn->perform("set client_encoding to " +
+            conn->to_quoted_identifier(data_->client_encoding_));
       }
 
       return conn.get();
     }
   }
 
-  /**
-   * @brief Executes the SQL commands of the specified files in a transaction.
-   */
-  static std::size_t execute(pgfe::Connection* const conn, const std::vector<filesystem::path>& paths)
-  {
-    return execute(conn, make_batches(paths));
-  }
-
-  // ---------------------------------------------------------------------------
-
-  bool is_invariant_ok() const
+  bool is_invariant_ok() const override
   {
     return (data_ && !delegate() && Command::is_invariant_ok()) ||
       (!data_ && delegate() && delegate()->is_invariant_ok());
   }
 
 private:
-  /**
-   * @returns The count of non-empty SQL query strings in `vec`.
-   */
-  static std::size_t non_empty_count(const pgfe::Sql_vector* const vec)
-  {
-    ASSERT(vec);
-    std::size_t result{};
-    const auto count = vec->sql_string_count();
-    using Counter = std::remove_const_t<decltype (count)>;
-    for (Counter i = 0; i < count; ++i) {
-      if (!vec->sql_string(i)->is_query_empty())
-        ++result;
-    }
-    return result;
-  }
+  struct Data final {
+    std::string name_;
 
-  /**
-   * @returns The starting query string position of the SQL string at `pos` of `vec`.
-   */
-  static std::size_t sql_query_string_position(const pgfe::Sql_vector* const vec, const std::size_t pos)
-  {
-    ASSERT(vec);
-    ASSERT(pos < vec->sql_string_count());
+    std::string address_;
+    std::optional<std::string> host_;
+    std::string port_;
+    std::string database_;
+    std::string username_;
+    std::optional<std::string> password_;
+    std::string client_encoding_;
 
-    static const auto sql_string_position = [](const pgfe::Sql_vector* const vec, const std::size_t pos)
-    {
-      std::size_t result{};
-      using Counter = std::remove_const_t<decltype (pos)>;
-      for (Counter i = 0; i < pos; ++i)
-        result += vec->sql_string(i)->to_string().size() + 1;
-      return result;
-    };
+    std::chrono::seconds connect_timeout_;
 
-    const auto junk_size = vec->sql_string(pos)->to_string().size() - vec->sql_string(pos)->to_query_string().size();
-    const auto result = sql_string_position(vec, pos) + junk_size;
-    return result;
+    std::unique_ptr<pgfe::Connection> conn_;
   };
+  mutable std::optional<Data> data_{Data{}};
+  Online* delegate_{};
+};
 
-  /**
-   * @brief Prints the Emacs-friendly information about an error to the standard error.
-   */
-  static void report_file_error(const filesystem::path& path,
-    const std::size_t lnum, const std::size_t cnum, const pgfe::Error* const err)
+} // namespace detail
+
+// =============================================================================
+
+/**
+ * @brief The `exec` command.
+ *
+ * The `exec` command executes the bunch of specified SQL queries.
+ */
+class Exec final : public detail::Online {
+public:
+  /// @returns The string with the options specific to this command.
+  static std::string options()
   {
-    /*
-     * Use GNU style for reporting error messages:
-     * foo.sql:3:1:Error: End of file during parsing
-     * (See etc/compilation.txt of Emacs installation.)
-     */
-    std::cerr << absolute(path).string() << ":" << lnum << ":" << cnum << ":Error: " << err->brief();
-    if (const auto& d = err->detail())
-      std::cerr << "\n Detail: " << *d;
-    if (const auto& h = err->hint())
-      std::cerr << "\n Hint: " << *h;
-    if (const auto& c = err->context())
-      std::cerr << "\n Context: " << *c;
-    std::cerr << "\n";
+    static std::string result{""};
+    return result;
   }
 
-  /**
-   * @brief Executes the SQL batches in the same transaction.
-   */
-  static std::size_t execute(pgfe::Connection* const conn, const std::vector<Sql_batch>& batches)
+  /// @returns The string with the all options of this command.
+  static std::string all_options()
+  {
+    static std::string result{Online::all_options().append("\n").append(options())};
+    return result;
+  }
+
+  explicit Exec(Online* const delegate)
+    : Online{delegate}
+  {
+    ASSERT(is_invariant_ok());
+  }
+
+  explicit Exec(const app::Program_parameters& params)
+    : Online{params}
+    , args_{params.arguments()}
+  {
+    check_options(params, {"help", "host", "address", "port", "database",
+                           "user", "password", "client_encoding", "connect_timeout"});
+
+    if (args_.empty())
+      throw std::runtime_error("no references specified");
+
+    ASSERT(is_invariant_ok());
+  }
+
+  std::string usage() const override
+  {
+    return std::string()
+      .append("Usage: pgspa " + name() + " [<options>] reference ...\n\n")
+      .append("Options:\n")
+      .append(all_options());
+  }
+
+private:
+  std::vector<std::string> args_;
+
+  bool is_invariant_ok() const override
+  {
+    return !args_.empty();
+  }
+
+  void run() override
+  {
+    auto* const cn = conn();
+    Tx_guard t{cn};
+    run__(cn);
+    t.commit();
+  }
+
+  void run__(pgfe::Connection* const cn)
+  {
+    for (const auto& arg : args_) {
+      const auto count = execute(cn, Util::sql_paths(Util::root_path() / arg));
+      std::cout << "The reference \"" << arg << "\". Executed queries count = " << count << ".\n";
+    }
+  }
+
+  /// @brief Executes the SQL commands of the specified files in a transaction.
+  static std::size_t execute(pgfe::Connection* const conn,
+    const std::vector<filesystem::path>& paths)
+  {
+    return execute(conn, Sql_batch::make_many(paths));
+  }
+
+  /// @brief Executes the SQL batches in the same transaction.
+  static std::size_t execute(pgfe::Connection* const conn,
+    const std::vector<Sql_batch>& batches)
   {
     ASSERT(conn);
     ASSERT_ALWAYS(conn->is_transaction_block_uncommitted());
@@ -824,7 +809,7 @@ private:
     {
       std::size_t result{};
       for (const auto& b : batches)
-        result += non_empty_count(b.sql_vector());
+        result += b.sql_vector()->non_empty_count();
       return result;
     }();
 
@@ -835,7 +820,7 @@ private:
      *   - if (es != nullptr) then the query was executed with a error.
      */
     using Execution_status = std::optional<std::unique_ptr<pgfe::Error>>;
-    auto batches_execution_statuses = [&batches]()
+    auto batches_execution_statuses = [&batches]
     {
       std::vector<std::vector<Execution_status>> result;
       for (const auto& b : batches)
@@ -851,8 +836,29 @@ private:
       return result;
     };
 
-    const auto report_error = [&batches, &query_position](const std::size_t i, const std::size_t j, const pgfe::Error* const err)
+    const auto report_error = [&batches, &query_position](const std::size_t i,
+      const std::size_t j, const pgfe::Error* const err)
     {
+      /// @brief Prints the Emacs-friendly information about an error to the standard error.
+      static const auto report_file_error = [](const filesystem::path& path,
+        const std::size_t lnum, const std::size_t cnum, const pgfe::Error* const err)
+      {
+        /*
+         * Use GNU style for reporting error messages:
+         * foo.sql:3:1:Error: End of file during parsing
+         * (See etc/compilation.txt of Emacs installation.)
+         */
+        std::cerr << absolute(path).string() << ":"
+                  << lnum << ":" << cnum << ":Error: " << err->brief();
+        if (const auto& d = err->detail())
+          std::cerr << "\n Detail: " << *d;
+        if (const auto& h = err->hint())
+          std::cerr << "\n Hint: " << *h;
+        if (const auto& c = err->context())
+          std::cerr << "\n Context: " << *c;
+        std::cerr << "\n";
+      };
+
       ASSERT(i < batches.size());
       const auto* const sql_vector = batches[i].sql_vector();
       ASSERT(j < sql_vector->sql_string_count());
@@ -861,18 +867,19 @@ private:
       const auto query_offset = query_position(err);
       if (const auto& path = batches[i].path()) {
         const auto content = sql_vector->to_string();
-        const auto ssp = sql_query_string_position(sql_vector, j);
+        const auto ssp = sql_vector->query_absolute_position(j);
         const auto qpos = query_offset ?
           ssp + *query_offset :
-          ssp + string::position_of_non_space(sql_vector->sql_string(j)->to_query_string(), 0);
-        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos - 1);
+          ssp + str::position_of_non_space(sql_vector->sql_string(j)->to_query_string(), 0);
+        const auto[lnum, cnum] = str::line_column_numbers_by_position(content, qpos - 1);
         report_file_error(*path, lnum + 1, cnum + 1, err);
       } else {
         const auto content = sql_vector->sql_string(j)->to_string();
         const auto qpos = query_offset.value_or(0);
-        const auto[lnum, cnum] = string::line_column_numbers_by_position(content, qpos - 1);
-        std::cerr << "pgspa internal query (see below):" << lnum + 1 << ":" << cnum + 1 << ":Error: " << err->brief() << ":\n"
-          << content << "\n";
+        const auto[lnum, cnum] = str::line_column_numbers_by_position(content, qpos - 1);
+        std::cerr << "pgspa internal query (see below):"
+                  << lnum + 1 << ":" << cnum + 1 << ":Error: " << err->brief() << ":\n"
+                  << content << "\n";
       }
     };
 
@@ -951,159 +958,47 @@ private:
 
     return total_count;
   }
-
-  /**
-   * @returns The vector of SQL batches from the vector of file paths.
-   */
-  static std::vector<Sql_batch> make_batches(const std::vector<filesystem::path>& paths)
-  {
-    std::vector<Sql_batch> result;
-    result.reserve(paths.size());
-    for (const auto& path : paths)
-      result.emplace_back(path);
-    return result;
-  }
-
-  // ===========================================================================
-
-  struct Data {
-    std::string name_;
-
-    std::string address_;
-    std::optional<std::string> host_;
-    std::string port_;
-    std::string database_;
-    std::string username_;
-    std::optional<std::string> password_;
-    std::string encoding_;
-
-    std::chrono::seconds connect_timeout_;
-
-    std::unique_ptr<pgfe::Connection> conn_;
-  };
-  mutable std::optional<Data> data_;
-  Online* delegate_{};
-};
-
-} // namespace detail
-
-// =============================================================================
-
-/**
- * @brief The `exec` command.
- *
- * The `exec` command executes the bunch of specified SQL queries.
- */
-class Exec final : public detail::Online {
-public:
-  /**
-   * @returns The string with the options specific to this command.
-   */
-  static std::string options()
-  {
-    static std::string result{""};
-    return result;
-  }
-
-  /**
-   * @returns The string with the all options of this command.
-   */
-  static std::string all_options()
-  {
-    static std::string result{Online::all_options().append("\n").append(options())};
-    return result;
-  }
-
-  explicit Exec(Online* const delegate)
-    : Online{delegate}
-  {
-    ASSERT(is_invariant_ok());
-  }
-
-  explicit Exec(const std::vector<std::string>& opts)
-    : Online{"exec"}
-  {
-    const auto parse_option = [this](const std::string& o) { return Online::parse_option(o); };
-    const auto b = cbegin(opts), e = cend(opts);
-    for (auto i = parse_options(b, e, parse_option); i != e; ++i)
-      args_.push_back(*i);
-    if (args_.empty())
-      throw_invalid_usage("no references specified");
-    ASSERT(is_invariant_ok());
-  }
-
-  std::string usage() const override
-  {
-    return std::string()
-      .append("Usage: pgspa " + name() + " [<options>] reference ...\n\n")
-      .append("Options:\n")
-      .append(all_options());
-  }
-
-  void run() override
-  {
-    auto* const cn = conn();
-    Tx_guard t{cn};
-    run__(cn);
-    t.commit();
-  }
-
-private:
-  bool is_invariant_ok() const
-  {
-    return !args_.empty();
-  }
-
-  void run__(pgfe::Connection* const cn)
-  {
-    for (const auto& arg : args_) {
-      const auto count = execute(cn, sql_paths(root_path() / arg));
-      std::cout << "The reference \"" << arg << "\". Executed queries count = " << count << ".\n";
-    }
-  }
-
-  std::vector<std::string> args_;
 };
 
 // =============================================================================
 
-template<typename ... Types>
-std::unique_ptr<Command> Command::make(const std::string& cmd, Types&& ... opts)
+std::unique_ptr<Command> Command::make(const app::Program_parameters& params)
 {
-  ASSERT(!cmd.empty());
-  if (cmd == "help")
-    return std::make_unique<Help>(std::forward<Types>(opts)...);
+  if (const auto& cmd = params.command_name(); !cmd)
+    throw std::runtime_error{"no command specified"};
+  else if (cmd == "help")
+    return std::make_unique<Help>(params);
   else if (cmd == "version")
-    return std::make_unique<Version>(std::forward<Types>(opts)...);
+    return std::make_unique<Version>(params);
   else if (cmd == "init")
-    return std::make_unique<Init>(std::forward<Types>(opts)...);
+    return std::make_unique<Init>(params);
   else if (cmd == "exec")
-    return std::make_unique<Exec>(std::forward<Types>(opts)...);
+    return std::make_unique<Exec>(params);
   else
-    throw std::logic_error{"invalid command \"" + cmd + "\""};
+    throw std::logic_error{"invalid command \"" + *cmd + "\""};
 }
 
 } // namespace dmitigr:pgspa
 
 int main(const int argc, const char* const argv[])
 {
+  namespace app = dmitigr::app;
   namespace pgfe = dmitigr::pgfe;
   namespace spa = dmitigr::pgspa;
-  namespace console = dmitigr::console;
-  const auto executable_name = argv[0];
+
+  if (argc <= 1) {
+    std::cerr << spa::usage() << "\n";
+    return 1;
+  }
+
+  const app::Program_parameters params{argc, argv};
   try {
-    if (argc > 1) {
-      const auto [cmd, opts] = console::command_and_options(argc, argv);
-      const auto command = spa::Command::make(cmd, opts);
-      command->go();
-    } else {
-      std::cerr << spa::usage() << "\n";
-      return 1;
-    }
+    const auto command = spa::Command::make(params);
+    command->go();
   } catch (const spa::Handled_exception&) {
     return 1;
   } catch (const pgfe::Server_exception& e) {
-    std::cerr << executable_name << ": server error" << "\n";
+    std::cerr << params.executable_path() << ": server error" << "\n";
     const auto* const error = e.error();
     std::cerr << "  Brief: " << error->brief() << "\n";
     if (error->detail())
@@ -1119,10 +1014,10 @@ int main(const int argc, const char* const argv[])
     if (error->context())
       std::cerr << "  Context: " << error->context().value() << "\n";
   } catch (const std::exception& e) {
-    std::cerr << executable_name << ": " << e.what() << "\n";
+    std::cerr << params.executable_path() << ": " << e.what() << "\n";
     return 1;
   } catch (...) {
-    std::cerr << executable_name << ": " << "unknown error" << "\n";
+    std::cerr << params.executable_path() << ": " << "unknown error" << "\n";
     return 2;
   }
 }
