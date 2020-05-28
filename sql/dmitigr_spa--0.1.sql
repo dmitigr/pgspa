@@ -121,35 +121,7 @@ comment on view spa_type is 'The type';
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
--- Functions to work with roles
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_existing_roles(roles_ name[], rolname out name)
-  returns setof name
-  returns null on null input
-  language sql
-as $function$
-  with r(nm) as (select unnest(roles_))
-    select rolname from @extschema@.spa_role join r on (rolname = nm);
-$function$;
-comment on function spa_existing_roles(name[], out name) is
-  'Set of roles from the given array which are really exists';
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_not_existing_roles(roles_ name[], rolname out name)
-  returns setof name
-  returns null on null input
-  language sql
-as $function$
-  with r(nm) as (select unnest(roles_))
-    select nm from r
-    except
-    select rolname from @extschema@.spa_role join r on (rolname = nm);
-$function$;
-comment on function spa_not_existing_roles(name[], out name) is
-  'Set of roles from the given array which are really not exists';
+-- Functions for working with roles
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -168,146 +140,7 @@ comment on function spa_groups(name, out name) is
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
-create or replace function spa_create_role_if_not_exists(role_ name, options_ text default '')
-  returns void
-  returns null on null input
-  language plpgsql
-as $function$
-begin
-  if (to_regrole(role_) is null) then
-    execute format('create role %I with %s', role_, options_);
-  end if;
-end;
-$function$;
-comment on function spa_create_role_if_not_exists(name, text) is 'Create role if not exists';
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_drop_role_if_exists(role_ name)
-  returns void
-  returns null on null input
-  language plpgsql
-as $function$
-begin
-  execute format('drop role if exists %I', role_);
-end;
-$function$;
-comment on function spa_drop_role_if_exists(name) is 'Drop role if exists';
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_drop_roles_if_exists(roles_ name[])
-  returns void
-  returns null on null input
-  language plpgsql
-as $function$
-declare
-  role_ name;
-begin
-  for role_ in select spa_existing_roles(roles_) loop
-    perform @extschema@.spa_drop_role_if_exists(role_);
-  end loop;
-end;
-$function$;
-comment on function spa_drop_roles_if_exists(name[]) is 'Drop roles if exists';
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_revoke_all_privileges_if_exists(role_ name, schema_ name)
-  returns void
-  returns null on null input
-  language plpgsql
-as $function$
-declare
-  var_ text;
-begin
-  if (to_regrole(role_) is null or to_regnamespace(schema_) is null) then
-    return;
-  end if;
-
-  -- tables and sequences
-  execute format('revoke all privileges on all tables in schema %I from %I', schema_, role_);
-  execute format('revoke all privileges on all sequences in schema %I from %I', schema_, role_);
-
-  -- domains
-  for var_ in select typname from @extschema@.spa_type where schemaname = schema_
-                and typtype = 'd'
-  loop
-    execute format('revoke all privileges on domain %I.%I from %I', schema_, var_, role_);
-  end loop;
-
-  -- functions
-  execute format('revoke all privileges on all functions in schema %I from %I', schema_, role_);
-
-  -- types
-  for var_ in select typname from @extschema@.spa_type where schemaname = schema_
-                and typtype not in ('b', 'c')
-  loop
-    execute format('revoke all privileges on type %I.%I from %I', schema_, var_, role_);
-  end loop;
-
-  -- schema
-  execute format('revoke all privileges on schema %I from %I', schema_, role_);
-end;
-$function$;
-comment on function spa_revoke_all_privileges_if_exists(name, name) is
-  'Revoke all privileges of the given role in the given schema (if both exists)';
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_revoke_from_groups_if_exists(role_ name)
-  returns void
-  returns null on null input
-  language plpgsql
-as $function$
-declare
-  nm_ name;
-begin
-  for nm_ in select spa_groups(role_) loop
-    execute format('revoke %I from %I', nm_, role_);
-  end loop;
-end;
-$function$;
-comment on function spa_revoke_from_groups_if_exists(name) is 'Revoke the given role from all the groups';
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_revoke_all_if_exists(roles_ name[], schemas_ name[])
-  returns void
-  returns null on null input
-  language plpgsql
-as $function$
-declare
-  role_ name;
-  schema_ name;
-begin
-  for role_ in select spa_existing_roles(roles_) loop
-    for schema_ in select spa_existing_schemas(schemas_) loop
-      perform spa_revoke_if_exists(role_, schema_);
-    end loop;
-    perform spa_revoke_from_groups_if_exists(role_);
-  end loop;
-end;
-$function$;
-comment on function spa_revoke_all_if_exists(name[], name[]) is
-  'Revoke all privileges of the given roles in the given schemas for any roles';
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
--- Functions to work with schemas
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
-create or replace function spa_existing_schemas(schemas_ name[], nspname out name)
-  returns setof name
-  returns null on null input
-  language sql
-as $function$
-  with s(nm) as (select unnest(schemas_))
-    select nspname from @extschema@.spa_schema join s on (nspname = nm);
-$function$;
-comment on function spa_existing_schemas(name[], out name) is
-  'Set of schemas from the given array which are really exists';
+-- Functions for clearing schemas
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -659,6 +492,19 @@ comment on function spa_clear_schema(name, text[], boolean) is 'Drops the object
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
+create or replace function spa_existing_schemas(schemas_ name[], nspname out name)
+  returns setof name
+  returns null on null input
+  language sql
+as $function$
+  with s(nm) as (select unnest(schemas_))
+    select nspname from @extschema@.spa_schema join s on (nspname = nm);
+$function$;
+comment on function spa_existing_schemas(name[], out name) is
+  'Set of schemas from the given array which are really exists';
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 create or replace function spa_clear_schemas_if_exists(schemas_ name[],
     object_types_ text[] default array['rules', 'triggers', 'functions',
       'sequences', 'views', 'domains', 'domain_constraints', 'types'],
@@ -674,7 +520,8 @@ as $function$
       (select (@extschema@.spa_clear_schema(nspname, object_types_, verbose_ := verbose_)).* from
         @extschema@.spa_existing_schemas(schemas_)) as foo) as bar;
 $function$;
-comment on function spa_clear_schemas_if_exists(name[], text[], boolean) is 'Removes the given logic from the given schemas';
+comment on function spa_clear_schemas_if_exists(name[], text[], boolean) is
+  'Removes the given logic from the given schemas';
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
