@@ -22,8 +22,8 @@
 #include <string>
 #include <vector>
 
-#define ASSERT(a) DMITIGR_ASSERT(a)
-#define ASSERT_ALWAYS(a) DMITIGR_ASSERT_ALWAYS(a)
+#define ASSERT DMITIGR_ASSERT
+#define ASSERT_ALWAYS DMITIGR_ASSERT_ALWAYS
 
 namespace dmitigr::pgspa {
 
@@ -57,10 +57,10 @@ struct Util final {
           "\" found in parent directory hierarchy"};
   }
 
-  /// @returns The vector of paths to SQL files of the specified `ref`.
-  static std::vector<filesystem::path> sql_paths(const filesystem::path& ref)
+  /// @returns The vector of paths to SQL files of the specified `reference`.
+  static std::vector<filesystem::path> sql_paths(const filesystem::path& reference)
   {
-    return sql_paths(ref, {ref});
+    return sql_paths(reference, {reference});
   }
 
   /// @returns The vector of paths to SQL files by the specified `reference`.
@@ -194,6 +194,16 @@ struct Util final {
     }
     return result;
   }
+
+  /**
+   * @brief Throws `std::runtime_error` if there are an option in `params`
+   * which is not in `opts`.
+   */
+  static void check_options(const app::Program_parameters& params, const std::vector<std::string>& opts)
+  {
+    if (const auto i = params.option_other_than(opts); i != cend(params.options()))
+      throw std::runtime_error{"invalid option " + i->first};
+  }
 };
 
 // ===========================================================================
@@ -205,16 +215,15 @@ public:
     : path_{path}
   {
     vec_ = pgfe::Sql_vector::make(str::file_to_string(*path_));
-    ASSERT(is_invariant_ok());
+    ASSERT_ALWAYS(is_valid());
   }
 
   explicit Sql_batch(std::unique_ptr<pgfe::Sql_vector>&& vec)
     : vec_{std::move(vec)}
   {
-    ASSERT(is_invariant_ok());
+    ASSERT_ALWAYS(is_valid());
   }
 
-  /// @returns The vector of SQL batches from the vector of file paths.
   static std::vector<Sql_batch> make_many(const std::vector<filesystem::path>& paths)
   {
     std::vector<Sql_batch> result;
@@ -229,20 +238,15 @@ public:
     return path_;
   }
 
-  pgfe::Sql_vector* sql_vector()
-  {
-    return const_cast<pgfe::Sql_vector*>(static_cast<const Sql_batch*>(this)->sql_vector());
-  }
-
   const pgfe::Sql_vector* sql_vector() const
   {
     return vec_.get();
   }
 
 private:
-  bool is_invariant_ok() const
+  bool is_valid() const
   {
-    const bool vec_ok = bool(vec_);
+    const bool vec_ok = static_cast<bool>(vec_);
     return vec_ok;
   }
 
@@ -262,21 +266,21 @@ public:
 
   static void begin(pgfe::Connection* const conn)
   {
-    ASSERT(conn);
+    ASSERT_ALWAYS(conn);
     if (!conn->is_transaction_block_uncommitted())
       conn->perform("begin");
   }
 
   static void commit(pgfe::Connection* const conn)
   {
-    ASSERT(conn);
+    ASSERT_ALWAYS(conn);
     if (conn->is_transaction_block_uncommitted())
       conn->perform("commit");
   }
 
   static void rollback(pgfe::Connection* const conn)
   {
-    ASSERT(conn);
+    ASSERT_ALWAYS(conn);
     if (conn->is_transaction_block_uncommitted())
       conn->perform("rollback");
   }
@@ -290,7 +294,7 @@ public:
   Tx_guard(pgfe::Connection* const conn)
     : conn_{conn}
   {
-    ASSERT(conn_);
+    ASSERT_ALWAYS(conn_);
     begin(conn_);
   }
 
@@ -313,18 +317,12 @@ class Handled_exception final {};
 /// @brief A pgspa command.
 class Command {
 public:
+  /// @returns A new instance from the textual type identifier.
   template<typename ... Types>
   static std::unique_ptr<Command> make(const std::string_view name, Types&& ... params);
 
-  /// @returns A new instance from the textual type identifier.
+  /// @overload
   static std::unique_ptr<Command> make(const app::Program_parameters& params);
-
-  /// @returns The string with the options specific to this command.
-  static std::string options()
-  {
-    static std::string result;
-    return result;
-  }
 
   /// @returns The name of the command.
   virtual const std::string& name() const
@@ -332,65 +330,27 @@ public:
     return name_;
   }
 
-  /// @returns The general usage info of this command.
-  virtual std::string usage() const
-  {
-    return std::string{}
-      .append("Usage: pgspa " + name() + "\n\n")
-      .append("Options:\n")
-      .append(options());
-  }
-
-  /**
-   * @brief Runs the current command.
-   *
-   * @see run().
-   */
-  void go()
-  {
-    run();
-  }
-
-protected:
-  /// @brief The default constructor. (Used for delegates.)
-  Command() = default;
-
-  /// @brief The constructor. (Used for help.)
-  explicit Command(std::string name)
-    : name_{std::move(name)}
-  {}
-
-  /// @brief The constructor.
-  explicit Command(const app::Program_parameters& params)
-    : name_{params.command_name().value()}
-  {}
-
   /// @returns `true` if the invariant is okay, or `false` otherwise.
-  virtual bool is_invariant_ok() const
+  virtual bool is_valid() const
   {
     return !name_.empty();
   }
 
-  /**
-   * @brief Throws `std::runtime_error` if there are an option in `params`
-   * which is not in `opts`.
-   */
-  void check_options(const app::Program_parameters& params, const std::vector<std::string>& opts)
-  {
-    if (const auto i = params.option_other_than(opts); i != cend(params.options()))
-      throw std::runtime_error{"invalid option " + i->first};
-  }
-
-private:
-  /**
-   * @brief Runs the current command.
-   *
-   * @remarks The API function `go()` calls this function.
-   *
-   * @see go().
-   */
+  /// @brief Runs the current command.
   virtual void run() = 0;
 
+protected:
+  /// @brief The constructor.
+  Command(std::string name = {})
+    : name_{std::move(name)}
+  {}
+
+  /// @overload
+  explicit Command(const app::Program_parameters& params)
+    : name_{params.command_name().value()}
+  {}
+
+private:
   std::string name_;
 };
 
@@ -407,26 +367,70 @@ public:
     : Command{params}
   {
     const auto& args = params.arguments();
-    if (args.size() != 1)
-      usage_ = usage();
-    else
-      usage_ = make(args.back())->usage();
+    usage_ = (args.size() != 1) ? usage("help") : usage(args.back());
   }
 
-  std::string usage() const override
+  void run() override
   {
-    return std::string{}
-      .append("Usage: pgspa " + name() + " [options] [<command>]\n\n")
-      .append("Options:\n")
-      .append(Command::options());
+    std::cout << usage_;
+    std::cout.flush();
   }
 
 private:
   std::string usage_;
 
-  void run() override
+  /// @returns The string with the options specific to the `cmd` command.
+  static std::string options(const std::string_view cmd)
   {
-    std::cout << usage_ << "\n";
+    ASSERT_ALWAYS(!cmd.empty());
+    if (cmd == "exec")
+      return std::string{
+        "  --host=<name> - the hostname of the PostgreSQL server (\"localhost\" by default).\n"
+        "  --address=<IP address> - the IP address of the PostgreSQL server to connect to (\"127.0.0.1\" by default).\n"
+        "  --port=<number> - the port number of the PostgreSQL server to operate (\"5432\" by default).\n"
+        "  --username=<name> - the name of the user to operate (current username by default).\n"
+        "  --password=<password> - the password (be aware, it may appear in the system logs!)\n"
+        "  --database=<name> - the name of the database to operate (value of --username by default).\n"
+        "  --client_encoding=<name> - the name of the client encoding to operate.\n"
+        "  --connect_timeout=<seconds> - the connect timeout in seconds (\"8\" by default)."};
+    else
+      return {};
+  }
+
+  /// @returns The string with the arguments specific to the `cmd` command.
+  static std::string arguments(const std::string_view cmd)
+  {
+    ASSERT_ALWAYS(!cmd.empty());
+    if (cmd == "exec")
+      return std::string{"  reference ... - the references which resolves to SQL input"};
+    else
+      return {};
+  }
+
+  /// @returns The usage info of the `cmd` command.
+  static std::string usage(std::string cmd)
+  {
+    ASSERT_ALWAYS(!cmd.empty());
+    std::string result{"Usage: pgspa "};
+    result.append(std::move(cmd));
+    {
+      auto opts = options(cmd);
+      auto args = arguments(cmd);
+
+      if (!opts.empty())
+        result.append(" [options]");
+      if (!args.empty())
+        result.append(" arguments");
+      result.append("\n");
+
+      if (!opts.empty())
+        result.append("\noptions:\n")
+          .append(std::move(opts)).append("\n");
+      if (!args.empty())
+        result.append("\narguments:\n")
+          .append(std::move(args)).append("\n");
+    }
+    return result;
   }
 };
 
@@ -443,7 +447,6 @@ public:
     : Command{params}
   {}
 
-private:
   void run() override
   {
     constexpr int major_version = PGSPA_VERSION_MAJOR;
@@ -465,7 +468,6 @@ public:
     : Command{params}
   {}
 
-private:
   void run() override
   {
     const auto p = filesystem::perms::owner_all |
@@ -478,8 +480,6 @@ private:
 
 // =============================================================================
 
-namespace detail {
-
 /**
  * @brief The base for all "online" commands.
  *
@@ -488,28 +488,6 @@ namespace detail {
  */
 class Online : public Command {
 protected:
-  /// @returns The string with the options specific to this command.
-  static std::string options()
-  {
-    static std::string result{
-      "  --host=<name> - the hostname of the PostgreSQL server (\"localhost\" by default).\n"
-      "  --address=<IP address> - the IP address of the PostgreSQL server to connect to (\"127.0.0.1\" by default).\n"
-      "  --port=<number> - the port number of the PostgreSQL server to operate (\"5432\" by default).\n"
-      "  --username=<name> - the name of the user to operate (current username by default).\n"
-      "  --password=<password> - the password (be aware, it may appear in the system logs!)\n"
-      "  --database=<name> - the name of the database to operate (value of --user by default).\n"
-      "  --client_encoding=<name> - the name of the client encoding to operate.\n"
-      "  --connect_timeout=<seconds> - the connect timeout in seconds (\"8\" by default)."};
-    return result;
-  }
-
-  /// @returns The string with the all options of this command.
-  static std::string all_options()
-  {
-    static std::string result{Command::options().append("\n").append(options())};
-    return result;
-  }
-
   Online(std::string name)
     : Command{std::move(name)}
   {}
@@ -517,7 +495,7 @@ protected:
   explicit Online(Online* const delegate)
     : delegate_{delegate}
   {
-    ASSERT(is_invariant_ok());
+    ASSERT_ALWAYS(is_valid());
   }
 
   explicit Online(const app::Program_parameters& params)
@@ -559,26 +537,16 @@ protected:
     else
       data_->connect_timeout_ = std::chrono::seconds{8};
 
-    ASSERT(is_invariant_ok());
+    ASSERT_ALWAYS(is_valid());
   }
 
-  /// @see Command::name().
   const std::string& name() const override
   {
-    ASSERT(delegate() || data_);
-    if (auto* const d = delegate())
+    ASSERT_ALWAYS(delegate() || data_);
+    if (const auto* const d = delegate())
       return d->name();
     else
       return Command::name();
-  }
-
-  /// @see Command::usage().
-  std::string usage() const override
-  {
-    return std::string()
-      .append("Usage: pgspa " + name() + " [<options>]\n\n")
-      .append("Options:\n")
-      .append(all_options());
   }
 
   /**
@@ -591,7 +559,7 @@ protected:
    */
   Online* delegate()
   {
-    return const_cast<Online*>(static_cast<const Online*>(this)->delegate());
+    return delegate_;
   }
 
   /// @overload
@@ -602,7 +570,7 @@ protected:
 
   const std::string& database() const
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     if (auto* const d = delegate())
       return d->database();
     else {
@@ -614,7 +582,7 @@ protected:
 
   const std::optional<std::string>& host_name() const
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     if (auto* const d = delegate())
       return d->host_name();
     else
@@ -623,7 +591,7 @@ protected:
 
   const std::string& host_address() const
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     if (auto* const d = delegate())
       return d->host_address();
     else
@@ -632,7 +600,7 @@ protected:
 
   const std::string& host_port() const
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     if (auto* const d = delegate())
       return d->host_port();
     else
@@ -641,7 +609,7 @@ protected:
 
   const std::string& username() const
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     if (auto* const d = delegate())
       return d->username();
     else
@@ -650,7 +618,7 @@ protected:
 
   const std::optional<std::string>& password() const
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     if (auto* const d = delegate())
       return d->password();
     else
@@ -659,7 +627,7 @@ protected:
 
   std::chrono::seconds connect_timeout() const
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     if (auto* const d = delegate())
       return d->connect_timeout();
     else
@@ -669,7 +637,7 @@ protected:
   /// @returns The opened connection to the PostgreSQL server.
   pgfe::Connection* conn()
   {
-    ASSERT(delegate() || data_);
+    ASSERT_ALWAYS(delegate() || data_);
     namespace pgfe = dmitigr::pgfe;
     if (auto* const d = delegate()) {
       return d->conn();
@@ -698,10 +666,10 @@ protected:
     }
   }
 
-  bool is_invariant_ok() const override
+  bool is_valid() const override
   {
-    return (data_ && !delegate() && Command::is_invariant_ok()) ||
-      (!data_ && delegate() && delegate()->is_invariant_ok());
+    return (data_ && !delegate() && Command::is_valid()) ||
+      (!data_ && delegate() && delegate()->is_valid());
   }
 
 private:
@@ -724,8 +692,6 @@ private:
   Online* delegate_{};
 };
 
-} // namespace detail
-
 // =============================================================================
 
 /**
@@ -733,22 +699,8 @@ private:
  *
  * The `exec` command executes the bunch of specified SQL queries.
  */
-class Exec final : public detail::Online {
+class Exec final : public Online {
 public:
-  /// @returns The string with the options specific to this command.
-  static std::string options()
-  {
-    static std::string result{""};
-    return result;
-  }
-
-  /// @returns The string with the all options of this command.
-  static std::string all_options()
-  {
-    static std::string result{Online::all_options().append("\n").append(options())};
-    return result;
-  }
-
   Exec()
     : Online{"exec"}
   {}
@@ -756,53 +708,40 @@ public:
   explicit Exec(Online* const delegate)
     : Online{delegate}
   {
-    ASSERT(is_invariant_ok());
+    ASSERT_ALWAYS(is_valid());
   }
 
   explicit Exec(const app::Program_parameters& params)
     : Online{params}
     , args_{params.arguments()}
   {
-    check_options(params, {"host", "address", "port", "database", "username",
-                           "password", "client_encoding", "connect_timeout"});
+    Util::check_options(params, {"host", "address", "port", "database",
+      "username", "password", "client_encoding", "connect_timeout"});
 
     if (args_.empty())
       throw std::runtime_error("no references specified");
 
-    ASSERT(is_invariant_ok());
+    ASSERT_ALWAYS(is_valid());
   }
 
-  std::string usage() const override
+  bool is_valid() const override
   {
-    return std::string()
-      .append("Usage: pgspa " + name() + " [<options>] reference ...\n\n")
-      .append("Options:\n")
-      .append(all_options());
-  }
-
-private:
-  std::vector<std::string> args_;
-
-  bool is_invariant_ok() const override
-  {
-    return !args_.empty();
+    return !args_.empty() && Online::is_valid();
   }
 
   void run() override
   {
     auto* const cn = conn();
     Tx_guard t{cn};
-    run__(cn);
-    t.commit();
-  }
-
-  void run__(pgfe::Connection* const cn)
-  {
     for (const auto& arg : args_) {
       const auto count = execute(cn, Util::sql_paths(Util::root_path() / arg));
       std::cout << "The reference \"" << arg << "\". Executed queries count = " << count << ".\n";
     }
+    t.commit();
   }
+
+private:
+  std::vector<std::string> args_;
 
   /// @brief Executes the SQL commands of the specified files in a transaction.
   static std::size_t execute(pgfe::Connection* const conn,
@@ -815,7 +754,7 @@ private:
   static std::size_t execute(pgfe::Connection* const conn,
     const std::vector<Sql_batch>& batches)
   {
-    ASSERT(conn);
+    ASSERT_ALWAYS(conn);
     ASSERT_ALWAYS(conn->is_transaction_block_uncommitted());
 
     std::size_t successes_count{};
@@ -873,11 +812,11 @@ private:
         std::cerr << "\n";
       };
 
-      ASSERT(i < batches.size());
+      ASSERT_ALWAYS(i < batches.size());
       const auto* const sql_vector = batches[i].sql_vector();
-      ASSERT(j < sql_vector->sql_string_count());
-      ASSERT(!sql_vector->sql_string(j)->is_query_empty());
-      ASSERT(err);
+      ASSERT_ALWAYS(j < sql_vector->sql_string_count());
+      ASSERT_ALWAYS(!sql_vector->sql_string(j)->is_query_empty());
+      ASSERT_ALWAYS(err);
       const auto query_offset = query_position(err);
       if (const auto& path = batches[i].path()) {
         const auto content = sql_vector->to_string();
@@ -902,11 +841,11 @@ private:
     const auto batches_size = batches.size();
     do {
       iteration_successes_count = 0;
-      ASSERT(batches_size == batches_execution_statuses.size());
+      ASSERT_ALWAYS(batches_size == batches_execution_statuses.size());
       using Counter = std::remove_const_t<decltype (batches_size)>;
       for (Counter i = 0; i < batches_size; ++i) {
         const auto sql_string_count = batches[i].sql_vector()->sql_string_count();
-        ASSERT(sql_string_count == batches_execution_statuses[i].size());
+        ASSERT_ALWAYS(sql_string_count == batches_execution_statuses[i].size());
         using Counter = std::remove_const_t<decltype (sql_string_count)>;
         for (Counter j = 0; j < sql_string_count; ++j) {
           auto& execution_status = batches_execution_statuses[i][j];
@@ -934,7 +873,7 @@ private:
                   e.code() == pgfe::Server_errc::c2b_dependent_objects_still_exist) {
                   execution_status = e.error()->to_error(); // error (hope for the next iteration)
                   conn->perform("rollback to savepoint p1");
-                  ASSERT(execution_status && *execution_status);
+                  ASSERT_ALWAYS(execution_status && *execution_status);
                 } else {
                   execution_status = e.error()->to_error(); // fatal error (which will be reported last)
                   goto finish;
@@ -993,7 +932,7 @@ std::unique_ptr<Command> Command::make(const std::string_view name, Types&& ... 
 
 std::unique_ptr<Command> Command::make(const app::Program_parameters& params)
 {
-  DMITIGR_ASSERT(params.is_valid());
+  ASSERT_ALWAYS(params.is_valid());
   if (const auto& cmd = params.command_name(); cmd)
     return make(*cmd, params);
   else
@@ -1014,13 +953,13 @@ int main(const int argc, const char* const argv[])
   }
 
   const app::Program_parameters params{argc, argv};
+  const auto exe = params.executable_path().string();
   try {
-    const auto command = spa::Command::make(params);
-    command->go();
+    spa::Command::make(params)->run();
   } catch (const spa::Handled_exception&) {
     return 1;
   } catch (const pgfe::Server_exception& e) {
-    std::cerr << params.executable_path() << ": server error" << "\n";
+    std::cerr << exe << ": server error" << "\n";
     const auto* const error = e.error();
     std::cerr << "  Brief: " << error->brief() << "\n";
     if (error->detail())
@@ -1036,10 +975,10 @@ int main(const int argc, const char* const argv[])
     if (error->context())
       std::cerr << "  Context: " << error->context().value() << "\n";
   } catch (const std::exception& e) {
-    std::cerr << params.executable_path() << ": " << e.what() << "\n";
+    std::cerr << exe << ": " << e.what() << "\n";
     return 1;
   } catch (...) {
-    std::cerr << params.executable_path() << ": " << "unknown error" << "\n";
+    std::cerr << exe << ": " << "unknown error" << "\n";
     return 2;
   }
 }
